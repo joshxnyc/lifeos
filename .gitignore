@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# env — secrets never enter the repo; .env.example (Phase 0) is the template
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.log
+.vercel
+tsconfig.tsbuildinfo
