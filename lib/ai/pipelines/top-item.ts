@@ -5,7 +5,7 @@ import { callStructured, loadPrompt } from "@/lib/ai/client";
 import { buildContext } from "@/lib/ai/context";
 import { enqueueNotification } from "@/lib/notify";
 import { getSettings } from "@/lib/settings";
-import { addDays, localDate, localTime, mondayOf } from "@/lib/time";
+import { addDays, isDueNow, localDate, localTime, mondayOf } from "@/lib/time";
 import { rankTasks } from "@/lib/domain/top-item";
 import { isFollowUpOverdue } from "@/lib/people";
 import type { CalendarEvent, Person, Routine, RoutineLog, Task } from "@/lib/types";
@@ -48,10 +48,11 @@ function plural(n: number, word: string): string {
  * window after 06:30 local, or the day has no plan yet and it is still morning
  * (a missed tick, a cold deploy, a phone that woke up late).
  */
+const PLANNING_TIME = "06:30";
+
 export function shouldPlanNow(localHHmm: string, hasPlan: boolean): boolean {
-  const isWindow = localHHmm >= "06:30" && localHHmm < "06:45";
-  if (isWindow) return true;
-  return !hasPlan && localHHmm >= "06:30" && localHHmm < "12:00";
+  if (isDueNow(localHHmm, PLANNING_TIME)) return true;
+  return !hasPlan && localHHmm >= PLANNING_TIME && localHHmm < "12:00";
 }
 
 export async function planMorning(

@@ -23,6 +23,9 @@ function client(): Client {
   return new Client({ auth: token });
 }
 
+type SearchParams = Parameters<Client["search"]>[0];
+type QueryParams = Parameters<Client["databases"]["query"]>[0];
+
 export interface NotionSearchResult {
   id: string;
   object: "page" | "database";
@@ -70,12 +73,17 @@ export async function searchShared(opts: {
   const limit = opts.limit ?? 100;
 
   do {
-    const res = (await notion.search({
-      ...(opts.objectType ? { filter: { property: "object", value: opts.objectType } } : {}),
+    const params: SearchParams = {
       sort: { direction: "descending", timestamp: "last_edited_time" },
       page_size: 50,
       start_cursor: cursor,
-    })) as unknown as { results: RawResult[]; next_cursor: string | null; has_more: boolean };
+    };
+    if (opts.objectType) params.filter = { property: "object", value: opts.objectType };
+    const res = (await notion.search(params)) as unknown as {
+      results: RawResult[];
+      next_cursor: string | null;
+      has_more: boolean;
+    };
 
     for (const raw of res.results) {
       const mapped = mapResult(raw);
@@ -100,16 +108,23 @@ export async function queryDatabase(
   let cursor: string | undefined;
 
   do {
-    const res = (await notion.databases.query({
+    // The filter union in @notionhq/client is wider than we need; build the
+    // params object plainly and cast it once.
+    const params = {
       database_id: databaseId,
-      ...(since
-        ? { filter: { timestamp: "last_edited_time", last_edited_time: { on_or_after: since } } }
-        : {}),
       sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
       page_size: 50,
       start_cursor: cursor,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any)) as unknown as { results: RawResult[]; next_cursor: string | null; has_more: boolean };
+      ...(since
+        ? { filter: { timestamp: "last_edited_time", last_edited_time: { on_or_after: since } } }
+        : {}),
+    } as unknown as QueryParams;
+
+    const res = (await notion.databases.query(params)) as unknown as {
+      results: RawResult[];
+      next_cursor: string | null;
+      has_more: boolean;
+    };
 
     for (const raw of res.results) {
       out.push(mapResult(raw));
@@ -146,11 +161,16 @@ export async function listDatabases(): Promise<NotionDatabaseInfo[]> {
   let cursor: string | undefined;
 
   do {
-    const res = (await notion.search({
+    const params: SearchParams = {
       filter: { property: "object", value: "database" },
       page_size: 50,
       start_cursor: cursor,
-    })) as unknown as { results: RawResult[]; next_cursor: string | null; has_more: boolean };
+    };
+    const res = (await notion.search(params)) as unknown as {
+      results: RawResult[];
+      next_cursor: string | null;
+      has_more: boolean;
+    };
 
     for (const raw of res.results) {
       const props = (raw.properties ?? {}) as Record<string, { type?: string } & Record<string, unknown>>;

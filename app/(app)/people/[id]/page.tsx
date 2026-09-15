@@ -52,13 +52,18 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   const youOwe = taskRows.filter((t) => t.owner === "me");
   const theyOwe = taskRows.filter((t) => t.owner === "them");
 
-  const timeline = ((links ?? []) as {
-    role: string;
-    source_items: { id: string; kind: string; title: string; occurred_at: string | null; text: string } | null;
-  }[])
-    .map((l) => ({ role: l.role, item: l.source_items }))
-    .filter((l): l is { role: string; item: NonNullable<(typeof l)["item"]> } => Boolean(l.item))
-    .sort((a, b) => String(b.item.occurred_at ?? "").localeCompare(String(a.item.occurred_at ?? "")));
+  type TimelineSource = {
+    id: string;
+    kind: string;
+    title: string;
+    occurred_at: string | null;
+    text: string;
+  };
+  const timeline: { role: string; item: TimelineSource }[] = [];
+  for (const link of (links ?? []) as { role: string; source_items: TimelineSource | null }[]) {
+    if (link.source_items) timeline.push({ role: link.role, item: link.source_items });
+  }
+  timeline.sort((a, b) => String(b.item.occurred_at ?? "").localeCompare(String(a.item.occurred_at ?? "")));
 
   return (
     <div className="pt-6">
