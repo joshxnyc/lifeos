@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/* LifeOS design tokens — DESIGN_BRIEF.md §3 "warm editorial planner".
+   Light is the default; dark follows the system or an explicit
+   data-theme="dark" on <html>. */
+
+:root {
+  --paper: #f7f3ec;
+  --paper-2: #efe9df;
+  --ink: #1e1a16;
+  --ink-2: #5c554c;
+  --ink-3: #9a928a;
+  --line: #e2dbcf;
+  --accent: #a84b28;
+  --accent-soft: #f3ded3;
+  --ok: #4c7a5a;
+  --warn: #b88a2a;
+  --danger: #a63d2f;
+
+  --domain-personal: #7a8c6e;
+  --domain-almedia: #3f5f7a;
+  --domain-tarifa: #8a5a3c;
+  --domain-misc: #7a6c8a;
+}
+
+.dark {
+  --paper: #17150f;
+  --paper-2: #221f18;
+  --ink: #efe9df;
+  --ink-2: #b3aba0;
+  --ink-3: #726b60;
+  --line: #302c24;
+  --accent: #d4744e;
+  --accent-soft: #3d2a20;
+  --ok: #6a9878;
+  --warn: #cfa24b;
+  --danger: #c05a4b;
+
+  --domain-personal: #93a686;
+  --domain-almedia: #5b7d9a;
+  --domain-tarifa: #a97a58;
+  --domain-misc: #9587a6;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-domain-personal: var(--domain-personal);
+  --color-domain-almedia: var(--domain-almedia);
+  --color-domain-tarifa: var(--domain-tarifa);
+  --color-domain-misc: var(--domain-misc);
+
+  --font-display: var(--font-fraunces), "Fraunces", Georgia, serif;
+  --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-card: 10px;
+
+  --shadow-whisper: 0 1px 2px rgba(30, 26, 22, 0.06);
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (min-width: 769px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+/* Section labels: 11px, uppercase, tracked, ink-2 (never ink-3 — contrast). */
+.section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* iOS standalone: respect safe areas. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Motion discipline: 150–200ms ease-out; nothing bounces. */
+* {
+  transition-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Task row completion: fade + collapse over 300ms (DESIGN_BRIEF §3 Motion). */
+@keyframes task-complete {
+  0% {
+    opacity: 1;
+    max-height: 60px;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+  }
+}
+.task-completing {
+  animation: task-complete 300ms ease-out forwards;
+  overflow: hidden;
+}
