@@ -32,25 +32,26 @@ export function CadenceStepper({ personId, days }: { personId: string; days: num
   }
 
   return (
-    <div className="flex items-center gap-2">
+    // Canvas 1k: one hairline pill split into − / value / + by internal rules.
+    <div className="inline-flex items-center overflow-hidden rounded-full border border-line">
       <button
         type="button"
         aria-label="Less often"
         onClick={() => step(-1)}
         disabled={pending}
-        className="flex size-11 items-center justify-center rounded-full border border-line text-ink-2"
+        className="flex h-11 w-10 items-center justify-center border-r border-line text-ink-2"
       >
         <Minus size={16} />
       </button>
-      <span className="min-w-[8.5rem] text-center text-[14px] text-ink tabular">
-        {value ? `Every ${value} days` : "No follow-up cadence"}
+      <span className="tabular px-3 text-center text-[13px] text-ink">
+        {value ? `Every ${value} days` : "No cadence"}
       </span>
       <button
         type="button"
         aria-label="More often"
         onClick={() => step(1)}
         disabled={pending}
-        className="flex size-11 items-center justify-center rounded-full border border-line text-ink-2"
+        className="flex h-11 w-10 items-center justify-center border-l border-line text-ink-2"
       >
         <Plus size={16} />
       </button>

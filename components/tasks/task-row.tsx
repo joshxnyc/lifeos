@@ -2,8 +2,8 @@
 
 // TaskRow (DESIGN_BRIEF §6): checkbox, title, right-aligned meta, 3px domain
 // edge. Swipe right completes, swipe left opens the reschedule sheet; on
-// desktop the same two actions appear on hover. Mirrored (Notion) tasks have
-// no checkbox and open externally (CONTRACTS ground rule 7).
+// desktop the same two actions appear on hover. Mirrored (Notion) tasks show
+// an inert checkbox and open externally (CONTRACTS ground rule 7).
 
 import { useRef, useState, useTransition } from "react";
 import { Check, CalendarClock, ExternalLink, Pencil } from "lucide-react";
@@ -190,7 +190,7 @@ export function TaskRow({
               type="button"
               aria-label="Reschedule"
               onClick={() => onReschedule(task)}
-              className="flex size-9 items-center justify-center text-ink-2 hover:text-ink"
+              className="flex size-11 items-center justify-center text-ink-2 hover:text-ink"
             >
               <CalendarClock size={16} />
             </button>
@@ -200,7 +200,7 @@ export function TaskRow({
               type="button"
               aria-label="Edit task"
               onClick={() => onEdit(task)}
-              className="flex size-9 items-center justify-center text-ink-2 hover:text-ink"
+              className="flex size-11 items-center justify-center text-ink-2 hover:text-ink"
             >
               <Pencil size={15} />
             </button>

@@ -67,7 +67,7 @@ export function ParsedChips({
       {chips.map((chip) => (
         <span
           key={chip}
-          className="rounded-full bg-accent-soft px-2 py-0.5 text-[12px] text-ink"
+          className="rounded-full bg-accent-soft px-2.5 py-0.5 text-[13px] text-ink"
         >
           {chip}
         </span>
@@ -149,19 +149,19 @@ export function QuickAdd({
           }}
           placeholder={placeholder}
           aria-label="Quick add a task"
-          className="h-11 min-w-0 flex-1 rounded-card border border-line bg-paper-2 px-3 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
+          className="h-11 min-w-0 flex-1 rounded-card bg-paper-2 px-3.5 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:ring-1 focus:ring-accent"
         />
         <button
           type="button"
           onClick={submit}
           disabled={!parsed.title.trim() || pending}
-          className="h-11 shrink-0 rounded-card bg-accent px-4 text-[14px] font-medium text-white disabled:opacity-40"
+          className="h-11 shrink-0 rounded-full bg-accent px-4 text-[14px] font-medium text-paper disabled:opacity-40"
         >
           Add
         </button>
       </div>
       {value.trim() ? (
-        <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-2">
+        <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-ink-2">
           <span className="truncate">{parsed.title || "…"}</span>
           <ParsedChips
             parsed={parsed}

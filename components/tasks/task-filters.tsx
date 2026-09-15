@@ -73,8 +73,9 @@ function Pill({
       href={href}
       scroll={false}
       className={cn(
-        "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px]",
-        active ? "border-accent bg-accent-soft text-ink" : "border-line text-ink-2",
+        // Canvas 1f: the chosen filter is an ink fill; the rest are hairlines.
+        "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px]",
+        active ? "border-ink bg-ink text-paper" : "border-line text-ink",
       )}
     >
       {children}

@@ -95,7 +95,7 @@ export default async function TasksPage({
     <>
       <PageHeader title="Tasks" subtitle={subtitle} />
 
-      <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-col gap-3 bg-paper px-4 pb-3 pt-1 md:-mx-8 md:px-8">
+      <div className="sticky top-[env(safe-area-inset-top,0px)] z-10 -mx-4 mb-4 flex flex-col gap-3 bg-paper px-4 pt-1 pb-3 md:-mx-8 md:px-8">
         <QuickAdd
           domains={domains}
           projects={projects}

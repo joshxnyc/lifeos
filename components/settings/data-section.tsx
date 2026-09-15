@@ -47,7 +47,7 @@ export function DataSection() {
         <Row label="Export" hint="Zip of JSON per table plus markdown for notes.">
           <a
             href="/api/export"
-            className="inline-flex h-11 items-center rounded-card bg-accent px-4 text-[14px] font-medium text-white"
+            className="inline-flex h-11 items-center rounded-full bg-accent px-4 text-[14px] font-medium text-paper"
           >
             Export
           </a>

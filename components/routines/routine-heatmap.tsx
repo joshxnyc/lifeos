@@ -89,7 +89,7 @@ export function RoutineHeatmap({
                 key={i}
                 className={cn(
                   "tabular pt-1 text-center text-[11px]",
-                  count > 0 ? "text-ink-2" : "text-ink-3",
+                  count > 0 ? "text-ink-2" : "text-ink-2 opacity-60",
                 )}
               >
                 {count}

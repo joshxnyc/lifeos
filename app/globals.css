@@ -125,6 +125,14 @@ body {
     text-wrap: pretty;
   }
 
+  /* Desktop artboards set screen titles at 34px (canvas 1t, 2j). */
+  @media (min-width: 769px) {
+    .display-title {
+      font-size: 34px;
+      letter-spacing: -0.02em;
+    }
+  }
+
   .display-lead {
     font-family: var(--font-display);
     font-optical-sizing: auto;

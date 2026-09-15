@@ -105,7 +105,7 @@ export default async function SearchPage({
       ) : (
         <div className="flex flex-col gap-7 pb-10">
           {tasks.length ? (
-            <Section title="Tasks">
+            <Section title="Tasks" count={tasks.length}>
               {tasks.map((task) => {
                 const domain = domainById.get(task.domain_id);
                 return (
@@ -125,7 +125,7 @@ export default async function SearchPage({
           ) : null}
 
           {notes.length ? (
-            <Section title="Notes">
+            <Section title="Notes" count={notes.length}>
               {notes.map((note) => {
                 const domain = note.domain_id ? domainById.get(note.domain_id) : undefined;
                 return (
@@ -143,7 +143,7 @@ export default async function SearchPage({
           ) : null}
 
           {people.length ? (
-            <Section title="People">
+            <Section title="People" count={people.length}>
               {people.map((person) => {
                 const domain = person.domain_id ? domainById.get(person.domain_id) : undefined;
                 return (
@@ -163,7 +163,7 @@ export default async function SearchPage({
           ) : null}
 
           {archive.length ? (
-            <Section title="Archive">
+            <Section title="Archive" count={archive.length}>
               {archive.map((item) => (
                 <Row key={item.id} href={`/source/${item.id}`}>
                   <span className="flex items-center gap-2">
@@ -171,7 +171,7 @@ export default async function SearchPage({
                     <span className="min-w-0 flex-1 truncate text-[15px] text-ink">
                       <Highlight text={item.title || KIND_LABEL[item.kind]} terms={terms} />
                     </span>
-                    <span className="shrink-0 font-mono text-[11px] text-ink-2">
+                    <span className="tabular shrink-0 font-mono text-[12px] text-ink-2">
                       {item.occurred_at ? item.occurred_at.slice(0, 10) : ""}
                     </span>
                   </span>
@@ -188,11 +188,22 @@ export default async function SearchPage({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
   return (
     <section>
-      <h2 className="section-label mb-2">{title}</h2>
-      <ul>{children}</ul>
+      {/* Canvas 1l: the count rides the label — "Archive · 4". */}
+      <h2 className="section-label">
+        {title} · <span className="tabular">{count}</span>
+      </h2>
+      <ul className="mt-1">{children}</ul>
     </section>
   );
 }

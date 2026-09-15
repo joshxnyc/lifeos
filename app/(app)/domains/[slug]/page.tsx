@@ -81,13 +81,16 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   return (
     <>
-      <header className="mb-6 flex items-end justify-between gap-3 pt-6">
-        <div>
-          <h1 className="display-title flex items-center gap-2.5">
-            <span className={cn("size-2.5 rounded-full", DOMAIN_COLOR_CLASS[domain.slug])} />
-            {domain.name}
-          </h1>
-          <p className="tabular mt-0.5 text-[13px] text-ink-2">
+      {/* Canvas 2f: the domain colour is a short 3px rule above the title,
+          never a fill behind it. */}
+      <span
+        aria-hidden
+        className={cn("mt-6 block h-[3px] w-10 rounded-[2px]", DOMAIN_COLOR_CLASS[domain.slug])}
+      />
+      <header className="mt-3 mb-6 flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="display-title">{domain.name}</h1>
+          <p className="tabular mt-1 text-[13px] text-ink-2">
             {openTasks.length} open · {doneThisWeek ?? 0} done this week · {activeCount} active{" "}
             {activeCount === 1 ? "project" : "projects"}
           </p>
@@ -103,32 +106,35 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
       {projects.length > 0 ? (
         <section className="mb-7">
-          <p className="section-label mb-1.5">Projects and areas</p>
-          <ul className="border-t border-line">
+          <p className="section-label mb-2.5">Projects and areas</p>
+          {/* Canvas 2f: each project is its own hairline card, two columns. */}
+          <ul className="flex flex-col gap-2">
             {projects.map((p) => {
               const dormant =
                 p.status === "active" && safeDormant(p.last_activity_at, settings.dormancy_days, now);
               const nextDue = nextDueFor(p.id);
               return (
-                <li key={p.id} className="border-b border-line last:border-b-0">
+                <li key={p.id}>
                   <Link
                     href={`/projects/${p.id}`}
-                    className="flex min-h-11 items-start justify-between gap-3 py-2.5"
+                    className="grid min-h-11 grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-card border border-line px-3.5 py-3"
                   >
-                    <span className="min-w-0">
-                      <span className="block break-words text-[15px] text-ink">{p.name}</span>
-                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-ink-2">
-                        <span>{p.kind === "area" ? "Area" : "Project"}</span>
-                        {p.status !== "active" ? <span>· Parked</span> : null}
-                        <span>· {openCountFor(p.id)} open</span>
-                        {dormant ? <span className="text-warn">· Dormant</span> : null}
-                      </span>
-                    </span>
+                    <span className="min-w-0 truncate text-[15px] font-medium text-ink">{p.name}</span>
                     <span className="tabular shrink-0 text-right text-[12px] text-ink-2">
-                      {nextDue ? <span className="block">Next {relativeDayLabel(nextDue, today)}</span> : null}
-                      <span className="block">
-                        {relativeDayLabel(localDate(new Date(p.last_activity_at), tz), today)}
-                      </span>
+                      {p.kind === "area" ? "Area" : "Project"}
+                      {p.status !== "active" ? " · Parked" : ""} · {openCountFor(p.id)} open
+                    </span>
+                    <span className="min-w-0 truncate text-[13px] text-ink-2">
+                      {nextDue ? `Next due ${relativeDayLabel(nextDue, today)} · ` : ""}
+                      active {relativeDayLabel(localDate(new Date(p.last_activity_at), tz), today).toLowerCase()}
+                    </span>
+                    <span className="tabular shrink-0 text-right text-[12px]">
+                      {dormant ? (
+                        <span className="inline-flex items-center gap-1.5 text-warn">
+                          <span className="size-1.5 rounded-full bg-warn" aria-hidden />
+                          Dormant
+                        </span>
+                      ) : null}
                     </span>
                   </Link>
                 </li>

@@ -73,8 +73,9 @@ function Chip({ href, active, children }: { href: string; active: boolean; child
     <Link
       href={href}
       className={cn(
-        "inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 text-[13px]",
-        active ? "border-accent bg-accent-soft text-ink" : "border-line text-ink-2",
+        // Canvas 2d: the chosen filter is an ink fill; the rest are hairlines.
+        "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-[13px]",
+        active ? "border-ink bg-ink text-paper" : "border-line text-ink",
       )}
     >
       {children}

@@ -132,7 +132,7 @@ export default async function SourceItemPage({ params }: { params: Promise<{ id:
                 className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line px-3 text-[13px] text-ink-2"
               >
                 {p.name || p.email}
-                {p.role ? <span className="text-ink-3">{ROLE_LABEL[p.role] ?? p.role}</span> : null}
+                {p.role ? <span className="text-ink-2">{ROLE_LABEL[p.role] ?? p.role}</span> : null}
               </span>
             ))}
           </div>

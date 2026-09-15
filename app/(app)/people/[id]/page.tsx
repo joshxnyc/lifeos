@@ -74,12 +74,12 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     <div className="pt-6">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <PersonAvatar name={person.name} slug={(domain?.slug as DomainSlug) ?? null} size={44} />
+          <PersonAvatar name={person.name} slug={(domain?.slug as DomainSlug) ?? null} size={52} />
           <div className="min-w-0">
             <h1 className="display-title">
               {person.name}
             </h1>
-            <p className="text-[14px] text-ink-2">
+            <p className="mt-1 text-[13px] text-ink-2">
               {[person.relationship, [person.role, person.company].filter(Boolean).join(" at ")]
                 .filter(Boolean)
                 .join(" · ") || "No relationship set"}
@@ -114,13 +114,15 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         />
       </div>
 
-      <section className="mt-6 flex flex-wrap items-center gap-3 border-y border-line py-4">
-        <p className="text-[14px] text-ink-2">
-          Last contact {timeAgo(person.last_contact_at)}
-        </p>
+      {/* Canvas 1k: cadence and last contact read as one chip line, with the
+          actions beneath them. */}
+      <section className="mt-3.5 flex flex-wrap items-center gap-2 text-[13px]">
         <CadenceStepper personId={person.id} days={person.follow_up_every_days} />
-        <LogContact personId={person.id} />
+        <span className="text-ink-2">Last contact {timeAgo(person.last_contact_at)}</span>
       </section>
+      <div className="mt-3.5">
+        <LogContact personId={person.id} />
+      </div>
 
       <div className="mt-7 grid gap-7 md:grid-cols-2">
         <TaskColumn title="You owe them" tasks={youOwe} empty="Nothing open." />
@@ -128,7 +130,9 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       </div>
 
       <section className="mt-7">
-        <h2 className="section-label mb-2">Notes</h2>
+        <h2 className="section-label mb-2">
+          Notes{(notes ?? []).length ? ` · ${(notes ?? []).length}` : ""}
+        </h2>
         <PersonNotes personId={person.id} notesMd={person.notes_md} />
         {(notes ?? []).length ? (
           <ul className="mt-3 border-t border-line">
@@ -147,18 +151,19 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       <section className="mt-7">
         <h2 className="section-label mb-2">Timeline</h2>
         {timeline.length ? (
-          <ul className="border-t border-line">
+          // Canvas 1k: a mono kind column, the title, then how long ago.
+          <ul>
             {timeline.map(({ role, item }) => (
               <li key={`${item.id}-${role}`} className="border-b border-line">
-                <Link href={`/source/${item.id}`} className="block py-2.5">
-                  <span className="flex items-baseline justify-between gap-3">
-                    <span className="truncate text-[15px] text-ink">{item.title || "Untitled"}</span>
-                    <span className="shrink-0 text-[12px] text-ink-2 tabular">
-                      {timeAgo(item.occurred_at)}
-                    </span>
+                <Link href={`/source/${item.id}`} className="flex min-h-11 items-center gap-3 py-2.5">
+                  <span className="w-[52px] shrink-0 font-mono text-[12px] text-ink-2">
+                    {SOURCE_LABEL[item.kind] ?? item.kind}
                   </span>
-                  <span className="mt-0.5 block truncate text-[13px] text-ink-2">
-                    {SOURCE_LABEL[item.kind] ?? item.kind} · {(item.text ?? "").replace(/\s+/g, " ").slice(0, 90)}
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-ink">
+                    {item.title || (item.text ?? "").replace(/\s+/g, " ").slice(0, 90) || "Untitled"}
+                  </span>
+                  <span className="tabular shrink-0 text-[12px] text-ink-2">
+                    {timeAgo(item.occurred_at)}
                   </span>
                 </Link>
               </li>
@@ -175,11 +180,17 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
 function TaskColumn({ title, tasks, empty }: { title: string; tasks: Task[]; empty: string }) {
   return (
     <section>
-      <h2 className="section-label mb-2">
-        {title} {tasks.length ? `· ${tasks.length}` : ""}
+      <h2 className="section-label mb-1.5">
+        {title}
+        {tasks.length ? (
+          <>
+            {" · "}
+            <span className="tabular">{tasks.length}</span>
+          </>
+        ) : null}
       </h2>
       {tasks.length ? (
-        <ul className="border-t border-line">
+        <ul>
           {tasks.map((t) => (
             <li key={t.id} className="flex items-baseline justify-between gap-3 border-b border-line py-2.5">
               <span className="min-w-0 truncate text-[15px] text-ink">{t.title}</span>

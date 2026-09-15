@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import Link from "next/link";
 import { Mic, Square } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DomainChip } from "@/components/ui/domain";
 import { Waveform } from "@/components/capture/waveform";
@@ -248,11 +247,19 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     return (
       <div className="flex flex-col gap-6 pb-10">
         <section>
-          <p className="section-label mb-2">Transcript</p>
-          <p className="font-display text-[20px] leading-snug text-ink">
-            {row?.cleaned_text || row?.transcript || "Listening back…"}
+          <p className="sr-only">Transcript</p>
+          {/* Canvas 1d: the transcript reads as a quotation in Fraunces. */}
+          <p className="font-display text-[20px] leading-[1.35] text-ink">
+            {row?.cleaned_text || row?.transcript
+              ? `\u201C${row?.cleaned_text || row?.transcript}\u201D`
+              : "Listening back…"}
           </p>
-          {filing ? <p className="mt-2 text-[13px] text-ink-2">Filing…</p> : null}
+          {filing ? (
+            <p className="mt-3 flex items-center gap-2 text-[13px] text-ink-2">
+              <span className="size-1.5 rounded-full bg-ink-3" aria-hidden />
+              Filing
+            </p>
+          ) : null}
         </section>
 
         {row?.status === "failed" ? (
@@ -263,9 +270,10 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
         ) : null}
 
         {result?.needs_clarification ? (
-          <p className="rounded-card bg-accent-soft px-3 py-2 text-[13px] text-ink">
-            {result.needs_clarification}{" "}
-            <Link href={fixHref(result)} className="font-medium text-accent underline underline-offset-2">
+          // Canvas 1d: a quiet paper-2 strip, the fix as an accent action.
+          <p className="flex items-start justify-between gap-3 rounded-card bg-paper-2 px-3 py-2.5 text-[13px] text-ink-2">
+            <span>{result.needs_clarification}</span>
+            <Link href={fixHref(result)} className="shrink-0 font-medium text-accent">
               Fix
             </Link>
           </p>
@@ -277,16 +285,19 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
             const domain = rowMeta?.domain_id ? domainById.get(rowMeta.domain_id) : undefined;
             const project = rowMeta?.project_id ? projectById.get(rowMeta.project_id) : undefined;
             return (
-              <article key={`${item.type}-${item.id}`} className="rounded-card border border-line p-4">
+              <article
+                key={`${item.type}-${item.id}`}
+                className="rounded-card border border-line bg-raise p-3.5 shadow-whisper"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="section-label">{LABELS[item.type]}</p>
-                    <p className="mt-1 text-[15px] text-ink">{item.title}</p>
+                    <p className="mt-1.5 text-[15px] font-medium text-ink">{item.title}</p>
                     {item.detail ? <p className="mt-0.5 text-[13px] text-ink-2">{item.detail}</p> : null}
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {domain ? <DomainChip slug={domain.slug as DomainSlug} name={domain.name} /> : null}
                       {project ? (
-                        <span className="rounded-full border border-line px-2 py-0.5 text-[12px] text-ink-2">
+                        <span className="rounded-full bg-paper-2 px-2.5 py-0.5 text-[13px] text-ink">
                           {project.name}
                         </span>
                       ) : null}
@@ -295,7 +306,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
                   {item.id ? (
                     <button
                       onClick={() => undo(item.id!, item.type)}
-                      className="h-11 shrink-0 px-2 text-[13px] text-ink-2 hover:text-ink"
+                      className="h-11 shrink-0 px-2 text-[13px] text-accent"
                     >
                       Undo
                     </button>
@@ -330,7 +341,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
             onChange={(e) => setText(e.target.value)}
             placeholder="What's on your mind?"
             rows={6}
-            className="w-full resize-none rounded-card border border-line bg-paper-2 p-3 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
+            className="w-full resize-none rounded-card bg-paper-2 p-3.5 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:ring-1 focus:ring-accent"
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void sendText();
             }}
@@ -339,32 +350,35 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
             <Button variant="primary" onClick={() => void sendText()} disabled={!text.trim()}>
               Send
             </Button>
-            <button onClick={() => setMode("voice")} className="h-11 text-[13px] text-ink-2 hover:text-ink">
+            <button onClick={() => setMode("voice")} className="h-11 text-[14px] text-accent">
               Record instead
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-end gap-6 pb-safe">
+        // Canvas 1c: elapsed time over the waveform, the 96px accent button
+        // under it, then what a tap does, then the way out.
+        <div className="flex flex-1 flex-col items-center justify-end gap-0 pb-safe">
           <div className="w-full max-w-sm">
-            <Waveform analyser={analyser} active={phase === "recording"} />
-            <p className="mt-2 text-center text-[13px] tabular text-ink-2">
-              {phase === "recording" ? formatElapsed(elapsed) : "Tap to record"}
+            <p className="tabular mb-4 text-center font-mono text-[13px] text-ink-2">
+              {phase === "recording" ? formatElapsed(elapsed) : "0:00"}
             </p>
+            <Waveform analyser={analyser} active={phase === "recording"} />
           </div>
 
           <button
             onClick={() => (phase === "recording" ? stopRecording() : void startRecording())}
             aria-label={phase === "recording" ? "Stop recording" : "Record"}
-            className={cn(
-              "flex size-24 items-center justify-center rounded-full text-white shadow-whisper transition-colors",
-              phase === "recording" ? "bg-danger" : "bg-accent",
-            )}
+            className="mt-10 flex size-24 items-center justify-center rounded-full bg-accent text-paper shadow-whisper transition-colors"
           >
-            {phase === "recording" ? <Square className="size-8" /> : <Mic className="size-9" />}
+            {phase === "recording" ? <Square className="size-7" /> : <Mic className="size-9" />}
           </button>
 
-          <button onClick={() => setMode("text")} className="h-11 text-[14px] text-ink-2 hover:text-ink">
+          <p className="mt-3.5 text-[13px] text-ink-2">
+            {phase === "recording" ? "Tap to stop" : "Tap to record"}
+          </p>
+
+          <button onClick={() => setMode("text")} className="mt-8 h-11 text-[15px] text-accent">
             Type instead
           </button>
         </div>

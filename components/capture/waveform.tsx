@@ -77,5 +77,5 @@ export function Waveform({ analyser, active }: { analyser: AnalyserNode | null; 
     };
   }, [analyser, active]);
 
-  return <canvas ref={canvasRef} aria-hidden className="h-12 w-full" />;
+  return <canvas ref={canvasRef} aria-hidden className="h-14 w-full" />;
 }

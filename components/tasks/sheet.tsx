@@ -45,12 +45,14 @@ export function Sheet({
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl border border-line bg-paper p-4 pb-safe shadow-whisper md:max-w-md md:rounded-card md:pb-4",
+          "max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-paper px-4 pt-3 pb-safe shadow-whisper md:max-w-md md:rounded-card md:border md:border-line md:p-4",
           className,
         )}
       >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="font-display text-[17px] font-semibold">{title}</h2>
+        {/* Canvas 2a: a grab handle over a section label, not a title bar. */}
+        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-line md:hidden" aria-hidden />
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="section-label">{title}</h2>
           <button
             type="button"
             onClick={onClose}

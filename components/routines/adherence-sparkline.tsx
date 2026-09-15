@@ -10,14 +10,12 @@ export function AdherenceSparkline({
   scheduleDays,
   logs,
   weeks = 12,
-  width = 280,
-  height = 44,
+  height = 56,
 }: {
   today: string;
   scheduleDays: number[];
   logs: { date: string; status: "done" | "missed" | "skipped" }[];
   weeks?: number;
-  width?: number;
   height?: number;
 }) {
   const map = new Map(logs.map((l) => [l.date, l.status]));
@@ -39,50 +37,27 @@ export function AdherenceSparkline({
     return { start, rate: due === 0 ? null : done / due };
   });
 
-  const points = series
-    .map((s, i) => {
-      if (s.rate === null) return null;
-      const x = weeks === 1 ? width / 2 : (i / (weeks - 1)) * width;
-      const y = height - s.rate * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .filter(Boolean)
-    .join(" ");
-
   const latest = [...series].reverse().find((s) => s.rate !== null);
 
+  // Canvas 1i: bars on a hairline baseline, this week picked out in `ok`.
   return (
-    <div className="flex flex-col gap-1">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        width="100%"
-        height={height}
+    <div className="flex flex-col gap-3">
+      <div
+        style={{ height }}
+        className="flex items-end gap-1.5 border-b border-line"
         role="img"
         aria-label={`Adherence over the last ${weeks} weeks`}
-        className="overflow-visible"
       >
-        <line
-          x1="0"
-          y1={height}
-          x2={width}
-          y2={height}
-          stroke="var(--line)"
-          strokeWidth="1"
-          shapeRendering="crispEdges"
-        />
-        {points ? (
-          <polyline
-            points={points}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
+        {series.map((s, i) => (
+          <span
+            key={s.start}
+            style={{ height: s.rate === null ? "4%" : `${Math.max(4, s.rate * 100)}%` }}
+            className={`flex-1 rounded-t-[2px] ${i === series.length - 1 ? "bg-ok" : "bg-line"}`}
           />
-        ) : null}
-      </svg>
-      <p className="tabular text-[11px] text-ink-2">
-        {weeks} weeks · latest {latest?.rate != null ? `${Math.round(latest.rate * 100)}%` : "—"}
+        ))}
+      </div>
+      <p className="tabular text-[13px] text-ink-2">
+        {weeks} weeks · this week {latest?.rate != null ? `${Math.round(latest.rate * 100)}%` : "—"}
       </p>
     </div>
   );

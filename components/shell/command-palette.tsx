@@ -29,7 +29,8 @@ const NAV: Array<[string, string]> = [
 ];
 
 const ITEM_CLASS =
-  "cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft";
+  // Canvas 2j: rows are flush, selection shows as an accent left edge.
+  "cursor-pointer border-l-[3px] border-l-transparent px-[15px] py-2 text-[14px] data-[selected=true]:border-l-accent data-[selected=true]:bg-paper-2";
 
 function localToday(timeZone: string): string {
   try {
@@ -140,7 +141,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
       <ToastHost />
       {open ? (
         <div className="fixed inset-0 z-50 bg-ink/20 pt-[15vh]" onClick={() => setOpen(false)}>
-          <div className="mx-auto w-full max-w-lg px-4" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto w-full max-w-[680px] px-4" onClick={(e) => e.stopPropagation()}>
             <Command
               shouldFilter
               className="overflow-hidden rounded-card border border-line bg-paper shadow-whisper"
@@ -150,25 +151,29 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                 value={query}
                 onValueChange={setQuery}
                 placeholder='Search, or add: "Send memo to Bernhard fri #tarifa !high"'
-                className="h-12 w-full border-b border-line bg-transparent px-4 text-[15px] outline-none placeholder:text-ink-3"
+                className="h-14 w-full border-b border-line bg-transparent px-[18px] text-[17px] outline-none placeholder:text-ink-3"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setOpen(false);
                 }}
               />
               {query.trim() ? (
-                <div className="border-b border-line px-4 py-2">
-                  <p className="truncate text-[13px] text-ink">{parsed.title || "…"}</p>
+                // Canvas 2j: the parse preview sits on the raised surface.
+                <div className="border-b border-line bg-raise px-[18px] py-3">
+                  <p className="section-label">Create task</p>
+                  <p className="mt-1.5 truncate text-[15px] font-medium text-ink">
+                    {parsed.title || "…"}
+                  </p>
                   <ParsedChips
                     parsed={parsed}
                     domains={domainOptions}
                     projects={projectOptions}
                     people={people}
                     today={today}
-                    className="mt-1.5"
+                    className="mt-2"
                   />
                 </div>
               ) : null}
-              <Command.List className="max-h-72 overflow-y-auto p-2">
+              <Command.List className="max-h-72 overflow-y-auto py-2">
                 {query.trim() ? (
                   <Command.Item value={`add ${query}`} onSelect={add} className={ITEM_CLASS}>
                     Add task: “{parsed.title || query}”
@@ -185,7 +190,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                 ) : null}
                 <Command.Group
                   heading="Go to"
-                  className="[&_[cmdk-group-heading]]:section-label [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5"
+                  className="[&_[cmdk-group-heading]]:section-label [&_[cmdk-group-heading]]:px-[18px] [&_[cmdk-group-heading]]:py-1.5"
                 >
                   {NAV.map(([href, label]) => (
                     <Command.Item

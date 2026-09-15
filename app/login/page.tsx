@@ -38,7 +38,7 @@ export default async function LoginPage({
         {error ? <p className="text-sm text-danger">{error}</p> : null}
         <button
           type="submit"
-          className="mt-4 h-11 rounded-card bg-accent font-medium text-white active:opacity-90"
+          className="mt-4 h-11 rounded-full bg-accent font-medium text-paper active:opacity-90"
         >
           Sign in
         </button>

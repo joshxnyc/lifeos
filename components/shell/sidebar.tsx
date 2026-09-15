@@ -21,20 +21,26 @@ export function Sidebar({
     <Link
       href={href}
       className={cn(
-        "flex items-center justify-between rounded-card px-3 py-1.5 text-[14px]",
+        // Canvas 2j: the current page lifts to paper on the paper-2 rail;
+        // the accent stays reserved for actions and counts.
+        "flex min-h-11 items-center justify-between rounded-[8px] px-2.5 py-1.5 text-[14px]",
         pathname === href || pathname.startsWith(`${href}/`)
-          ? "bg-accent-soft text-ink"
+          ? "bg-paper font-medium text-ink"
           : "text-ink-2 hover:text-ink",
       )}
     >
       {label}
-      {badge ? <span className="tabular text-[12px] text-accent">{badge}</span> : null}
+      {badge ? (
+        <span className="tabular rounded-full bg-accent-soft px-[7px] text-[12px] font-semibold text-accent">
+          {badge}
+        </span>
+      ) : null}
     </Link>
   );
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-paper-2 px-3 py-6 md:flex">
-      <Link href="/today" className="display-lead mb-6 px-3">
+      <Link href="/today" className="mb-4 px-2.5 font-display text-[17px] font-semibold">
         LifeOS
       </Link>
       <nav className="flex flex-col gap-0.5">
@@ -53,8 +59,10 @@ export function Sidebar({
             <Link
               href={`/domains/${d.slug}`}
               className={cn(
-                "flex items-center gap-2 rounded-card px-3 py-1.5 text-[14px]",
-                pathname === `/domains/${d.slug}` ? "bg-accent-soft text-ink" : "text-ink-2 hover:text-ink",
+                "flex min-h-11 items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[14px]",
+                pathname === `/domains/${d.slug}`
+                  ? "bg-paper font-medium text-ink"
+                  : "text-ink-2 hover:text-ink",
               )}
             >
               <span className={cn("size-2 rounded-full", DOMAIN_COLOR_CLASS[d.slug])} />
@@ -67,7 +75,7 @@ export function Sidebar({
                   key={p.id}
                   href={`/projects/${p.id}`}
                   className={cn(
-                    "block rounded-card py-1 pl-8 pr-3 text-[13px]",
+                    "block rounded-[8px] py-1.5 pr-3 pl-7 text-[13px]",
                     pathname === `/projects/${p.id}` ? "text-ink" : "text-ink-2 hover:text-ink",
                   )}
                 >

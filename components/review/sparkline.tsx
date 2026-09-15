@@ -1,16 +1,21 @@
+import { cn } from "@/lib/utils";
+
 // Three sparklines carry the review history (DESIGN_BRIEF §5.9): completion,
-// on-time, adherence. Inline SVG, one hairline, no axes, no gradient.
+// on-time, adherence. Canvas 2g draws them as bars on a hairline baseline —
+// every week in `line`, this week coloured by which way it moved — with the
+// current value in Fraunces underneath. No axes, no gradient.
 export function Sparkline({
   values,
   label,
   suffix = "",
-  width = 120,
-  height = 28,
+  goodDirection = "up",
+  height = 36,
 }: {
   values: (number | null)[];
   label: string;
   suffix?: string;
-  width?: number;
+  /** Which way counts as progress, so the last bar can be read at a glance. */
+  goodDirection?: "up" | "down";
   height?: number;
 }) {
   const points = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -20,36 +25,40 @@ export function Sparkline({
     return (
       <div>
         <p className="section-label">{label}</p>
-        <p className="mt-1 text-[13px] text-ink-2 tabular">
+        <p className="tabular mt-1 text-[13px] text-ink-2">
           {latest === undefined ? "Not enough weeks yet" : `${Math.round(latest)}${suffix}`}
         </p>
       </div>
     );
   }
 
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const span = max - min || 1;
-  const step = width / (points.length - 1);
-  const d = points
-    .map((v, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - ((v - min) / span) * height).toFixed(1)}`)
-    .join(" ");
+  const max = Math.max(...points, 1);
+  const previous = points.at(-2) ?? latest ?? 0;
+  const rose = (latest ?? 0) >= previous;
+  const good = goodDirection === "up" ? rose : !rose;
 
   return (
     <div>
       <p className="section-label">{label}</p>
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        className="mt-1 block max-w-full overflow-visible"
+      <div
+        style={{ height }}
+        className="mt-2 flex items-end gap-[3px] border-b border-line"
         role="img"
         aria-label={`${label}: ${points.map((p) => Math.round(p)).join(", ")}`}
       >
-        <path d={d} fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
-      </svg>
-      <p className="mt-0.5 text-[12px] text-ink-2 tabular">
-        {latest === undefined ? "" : `now ${Math.round(latest)}${suffix}`}
+        {points.map((v, i) => (
+          <span
+            key={i}
+            style={{ height: `${Math.max(4, (v / max) * 100)}%` }}
+            className={cn(
+              "flex-1 rounded-t-[2px]",
+              i === points.length - 1 ? (good ? "bg-ok" : "bg-danger") : "bg-line",
+            )}
+          />
+        ))}
+      </div>
+      <p className="tabular mt-1.5 font-display text-[17px] text-ink">
+        {latest === undefined ? "" : `${Math.round(latest)}${suffix}`}
       </p>
     </div>
   );

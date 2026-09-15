@@ -112,7 +112,7 @@ export function CoachLetter({
         >
           Regenerate
         </button>
-        {model ? <span className="text-[12px] text-ink-3">{model}</span> : null}
+        {model ? <span className="text-[12px] text-ink-2">{model}</span> : null}
       </div>
     </div>
   );

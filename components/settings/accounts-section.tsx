@@ -32,7 +32,7 @@ export function AccountsSection({
           <Link
             href="/api/auth/google/start"
             prefetch={false}
-            className="inline-flex h-11 items-center rounded-card bg-accent px-4 text-[14px] font-medium text-white"
+            className="inline-flex h-11 items-center text-[14px] text-accent"
           >
             Connect Google account
           </Link>

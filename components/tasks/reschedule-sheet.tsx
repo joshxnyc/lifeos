@@ -57,7 +57,7 @@ export function RescheduleSheet({
     <Sheet open onClose={onClose} title="Reschedule">
       <p className="mb-3 line-clamp-2 text-[14px] text-ink-2">{task.title}</p>
 
-      <div className="mb-3 flex rounded-card border border-line p-0.5">
+      <div className="mb-3 flex rounded-card bg-paper-2 p-[3px]">
         {(
           [
             ["due", "Due date"],
@@ -69,8 +69,9 @@ export function RescheduleSheet({
             type="button"
             onClick={() => setTarget(value)}
             className={cn(
-              "h-9 flex-1 rounded-[7px] text-[13px]",
-              target === value ? "bg-accent-soft text-ink" : "text-ink-2",
+              // Canvas 1f: the chosen segment lifts to paper on paper-2.
+              "h-11 flex-1 rounded-[8px] text-[13px]",
+              target === value ? "bg-paper font-medium text-ink shadow-whisper" : "text-ink-2",
             )}
           >
             {label}

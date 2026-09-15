@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { formatShortDate } from "@/components/tasks/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Sparkline } from "@/components/review/sparkline";
@@ -37,7 +39,10 @@ export default async function ReviewIndexPage() {
 
   return (
     <>
-      <PageHeader title="Weekly review" subtitle={`Week of ${thisWeek} to ${addDays(thisWeek, 6)}`} />
+      <PageHeader
+        title="Weekly reviews"
+        subtitle={`Week of ${formatShortDate(thisWeek)} – ${formatShortDate(addDays(thisWeek, 6))}`}
+      />
 
       <section className="rounded-card border border-line bg-paper-2 p-5">
         <p className="section-label">This week</p>
@@ -59,9 +64,9 @@ export default async function ReviewIndexPage() {
       </section>
 
       {withScores.length > 1 ? (
-        <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-3">
+        <section className="mt-8 grid grid-cols-3 gap-3">
           <Sparkline
-            label="Completed"
+            label="Completion"
             values={withScores.map((r) => r.scorecard.total.completed)}
           />
           <Sparkline
@@ -78,28 +83,42 @@ export default async function ReviewIndexPage() {
       ) : null}
 
       <section className="mt-8">
-        <h2 className="section-label mb-2">History</h2>
+        <h2 className="section-label mb-1">Past weeks</h2>
         {history.length ? (
-          <ul className="border-t border-line">
+          // Canvas 2g: the week and whether the change was tried on one 13px
+          // line, the change itself in Fraunces underneath.
+          <ul>
             {history.map((review) => (
               <li key={review.id} className="border-b border-line">
                 <Link
                   href={`/review/${review.week_start}/${review.status === "done" ? 5 : review.step_reached}`}
                   className="block py-3"
                 >
-                  <span className="flex items-baseline justify-between gap-3">
-                    <span className="text-[15px] text-ink tabular">Week of {review.week_start}</span>
-                    <span className="shrink-0 text-[12px] text-ink-2 tabular">
-                      {review.scorecard
-                        ? `${review.scorecard.total.completed} completed`
-                        : review.status === "done"
-                          ? "done"
-                          : `step ${review.step_reached}`}
+                  <span className="flex items-baseline justify-between gap-3 text-[13px] text-ink-2">
+                    <span className="tabular">
+                      {formatShortDate(review.week_start)} – {formatShortDate(addDays(review.week_start, 6))}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0",
+                        review.one_change == null
+                          ? "text-ink-2"
+                          : review.one_change_accepted
+                            ? "text-ok"
+                            : "text-danger",
+                      )}
+                    >
+                      {review.one_change == null
+                        ? review.status === "done"
+                          ? "Done"
+                          : `Step ${review.step_reached}`
+                        : review.one_change_accepted
+                          ? "Tried"
+                          : "Not tried"}
                     </span>
                   </span>
                   {review.one_change ? (
-                    <span className="mt-0.5 block text-[13px] text-ink-2">
-                      {review.one_change_accepted ? "✓ " : ""}
+                    <span className="mt-1 block font-display text-[17px] leading-[1.35] text-ink">
                       {review.one_change}
                     </span>
                   ) : null}

@@ -47,7 +47,7 @@ export default async function NotesPage({
             <input type="hidden" name="project_id" value={params.project ?? ""} />
             <button
               type="submit"
-              className="inline-flex h-11 items-center rounded-card bg-accent px-4 text-[14px] font-medium text-white"
+              className="inline-flex h-11 items-center text-[14px] text-accent"
             >
               New note
             </button>

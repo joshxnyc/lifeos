@@ -29,7 +29,8 @@ export function SettingsSection({
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("overflow-hidden rounded-card border border-line bg-paper-2", className)}>
+    // Canvas 1r: a grouped paper-2 block with hairlines inside, no outer rule.
+    <div className={cn("overflow-hidden rounded-card bg-paper-2", className)}>
       {children}
     </div>
   );
@@ -47,9 +48,9 @@ export function Row({
   href?: string;
 }) {
   const inner = (
-    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2.5">
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3.5 py-3">
       <div className="min-w-0">
-        <div className="text-[14px] text-ink">{label}</div>
+        <div className="text-[15px] font-medium text-ink">{label}</div>
         {hint ? <div className="mt-0.5 text-[13px] text-ink-2">{hint}</div> : null}
       </div>
       {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
@@ -74,20 +75,23 @@ const STATUS_TEXT: Record<AccountStatus, string> = {
   disabled: "Disabled",
 };
 
+// Canvas 1r: status reads as a coloured dot and a word, not a bordered badge.
 const STATUS_CLASS: Record<AccountStatus, string> = {
-  active: "border-ok/40 text-ok",
-  needs_reauth: "border-danger/40 text-danger",
-  disabled: "border-line text-ink-2",
+  active: "text-ok",
+  needs_reauth: "text-danger",
+  disabled: "text-ink-2",
+};
+
+const STATUS_DOT: Record<AccountStatus, string> = {
+  active: "bg-ok",
+  needs_reauth: "bg-danger",
+  disabled: "bg-ink-3",
 };
 
 export function StatusPill({ status }: { status: AccountStatus }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[12px]",
-        STATUS_CLASS[status],
-      )}
-    >
+    <span className={cn("inline-flex items-center gap-1.5 text-[12px]", STATUS_CLASS[status])}>
+      <span className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[status])} aria-hidden />
       {STATUS_TEXT[status]}
     </span>
   );
@@ -95,14 +99,13 @@ export function StatusPill({ status }: { status: AccountStatus }) {
 
 export function JobPill({ status }: { status: "running" | "ok" | "failed" }) {
   const map = {
-    running: { label: "Running", cls: "border-line text-ink-2" },
-    ok: { label: "OK", cls: "border-ok/40 text-ok" },
-    failed: { label: "Failed", cls: "border-danger/40 text-danger" },
+    running: { label: "Running", cls: "text-ink-2", dot: "bg-ink-3" },
+    ok: { label: "OK", cls: "text-ok", dot: "bg-ok" },
+    failed: { label: "Failed", cls: "text-danger", dot: "bg-danger" },
   } as const;
   return (
-    <span
-      className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[12px]", map[status].cls)}
-    >
+    <span className={cn("inline-flex items-center gap-1.5 text-[12px]", map[status].cls)}>
+      <span className={cn("size-1.5 shrink-0 rounded-full", map[status].dot)} aria-hidden />
       {map[status].label}
     </span>
   );

@@ -20,7 +20,7 @@ export function SearchField({ initial }: { initial: string }) {
 
   return (
     <form onSubmit={submit} className="mb-5">
-      <div className="flex h-12 items-center gap-2 rounded-card border border-line bg-paper-2 px-3 focus-within:border-accent">
+      <div className="flex h-12 items-center gap-2 rounded-card bg-paper-2 px-3.5 focus-within:ring-1 focus-within:ring-accent">
         <SearchIcon className="size-4 shrink-0 text-ink-2" />
         <input
           autoFocus

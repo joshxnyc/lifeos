@@ -6,7 +6,7 @@ import { createClient, currentUserId } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { localDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { DomainChip } from "@/components/ui/domain";
+import { DomainChip, DOMAIN_COLOR_CLASS, NotionGlyph } from "@/components/ui/domain";
 import { TaskList } from "@/components/tasks/task-list";
 import { QuickAdd } from "@/components/tasks/quick-add";
 import { ProjectActions } from "@/components/tasks/project-form";
@@ -78,53 +78,77 @@ export default async function ProjectPage({
   return (
     <>
       <header className="pt-6">
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="display-title">
-            {project.name}
-          </h1>
-          {project.notion_url ? (
+        {project.notion_url ? (
+          <div className="flex justify-end">
             <a
               href={project.notion_url}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 whitespace-nowrap text-[13px] text-accent"
+              className="inline-flex min-h-11 items-center text-[15px] text-accent"
             >
-              Open in Notion
+              Open in Notion ↗
             </a>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        {/* Canvas 1g: a short 3px rule in the domain colour heads the page. */}
+        {project.domains ? (
+          <span
+            aria-hidden
+            className={cn(
+              "mb-3 block h-[3px] w-10 rounded-[2px]",
+              DOMAIN_COLOR_CLASS[project.domains.slug],
+            )}
+          />
+        ) : null}
+
+        <h1 className="display-title">{project.name}</h1>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           {project.domains ? (
             <DomainChip slug={project.domains.slug} name={project.domains.name} />
           ) : null}
-          <span className="rounded-full border border-line px-2 py-0.5 text-[12px] text-ink-2">
+          <span className="rounded-full bg-paper-2 px-2.5 py-0.5 text-[13px] text-ink">
             {project.kind === "area" ? "Area" : "Project"}
           </span>
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-[12px]",
-              project.status === "active" ? "border-line text-ink-2" : "border-warn/40 text-warn",
-            )}
-          >
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-paper-2 px-2.5 py-0.5 text-[13px] text-ink">
+            <span
+              aria-hidden
+              className={cn(
+                "size-[7px] shrink-0 rounded-full",
+                project.status === "active" ? "bg-ok" : "bg-warn",
+              )}
+            />
             {project.status === "active" ? "Active" : project.status === "parked" ? "Parked" : "Closed"}
           </span>
-          {project.target_date ? (
-            <span className="tabular text-[12px] text-ink-2">
-              Target {formatShortDate(project.target_date, today)}
-              {targetDelta !== null
-                ? targetDelta === 0
-                  ? " · today"
-                  : targetDelta > 0
-                    ? ` · ${targetDelta} days left`
-                    : ` · ${-targetDelta} days over`
-                : null}
+          {project.notion_url ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-paper-2 px-2.5 py-0.5 text-[13px] text-ink">
+              <NotionGlyph />
+              Mirrored
             </span>
           ) : null}
         </div>
 
+        {/* Canvas 1g: days to target lead as a display number. */}
+        {project.target_date ? (
+          <div className="mt-4 flex items-baseline gap-2.5">
+            <span className="display-number">
+              {targetDelta === null ? "—" : Math.abs(targetDelta)}
+            </span>
+            <span className="text-[13px] text-ink-2">
+              {targetDelta === null
+                ? "target"
+                : targetDelta === 0
+                  ? "days to target · today"
+                  : targetDelta > 0
+                    ? `days to target · ${formatShortDate(project.target_date, today)}`
+                    : `days over target · ${formatShortDate(project.target_date, today)}`}
+            </span>
+          </div>
+        ) : null}
+
         {project.description ? (
-          <div className="prose-project mt-3 text-[15px] leading-relaxed text-ink-2 [&_a]:text-accent [&_h1]:font-display [&_h2]:font-display [&_li]:my-0.5 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+          <div className="prose-project mt-3.5 text-[15px] leading-relaxed text-ink-2 [&_a]:text-accent [&_h1]:font-display [&_h2]:font-display [&_li]:my-0.5 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{project.description}</ReactMarkdown>
           </div>
         ) : null}
@@ -142,7 +166,7 @@ export default async function ProjectPage({
             scroll={false}
             className={cn(
               "-mb-px inline-flex h-11 items-center border-b-2 px-2 text-[14px]",
-              tab === t.key ? "border-accent text-ink" : "border-transparent text-ink-2",
+              tab === t.key ? "border-ink font-medium text-ink" : "border-transparent text-ink-2",
             )}
           >
             {t.label}
