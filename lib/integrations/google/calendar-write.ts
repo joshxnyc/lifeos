@@ -1,5 +1,5 @@
 import "server-only";
-import { google, type Auth, type calendar_v3 } from "googleapis";
+import { google, type calendar_v3 } from "googleapis";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
 import { createServiceClient, singleUserId } from "@/lib/supabase/service";

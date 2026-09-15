@@ -30,14 +30,14 @@ interface GranolaSyncState {
 }
 
 export class GranolaOAuthProvider implements OAuthClientProvider {
-  private state: GranolaSyncState;
+  private syncState: GranolaSyncState;
 
   constructor(
     private readonly supabase: SupabaseClient,
     private account: ConnectedAccount,
     private readonly onRedirect?: (url: URL) => void,
   ) {
-    this.state = (account.sync_state ?? {}) as GranolaSyncState;
+    this.syncState = (account.sync_state ?? {}) as GranolaSyncState;
   }
 
   get redirectUrl(): string {
@@ -56,7 +56,7 @@ export class GranolaOAuthProvider implements OAuthClientProvider {
   }
 
   clientInformation(): OAuthClientInformationMixed | undefined {
-    return this.state.mcp_client_info;
+    return this.syncState.mcp_client_info;
   }
 
   async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {
@@ -107,7 +107,7 @@ export class GranolaOAuthProvider implements OAuthClientProvider {
   }
 
   codeVerifier(): string {
-    const verifier = this.state.mcp_code_verifier;
+    const verifier = this.syncState.mcp_code_verifier;
     if (!verifier) throw new Error("No PKCE code verifier stored — restart the Granola connect flow");
     return verifier;
   }
@@ -124,10 +124,10 @@ export class GranolaOAuthProvider implements OAuthClientProvider {
   }
 
   private async patchState(patch: Partial<GranolaSyncState>): Promise<void> {
-    this.state = { ...this.state, ...patch };
+    this.syncState = { ...this.syncState, ...patch };
     await this.supabase
       .from("connected_accounts")
-      .update({ sync_state: this.state })
+      .update({ sync_state: this.syncState })
       .eq("id", this.account.id);
   }
 }

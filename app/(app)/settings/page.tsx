@@ -17,7 +17,7 @@ import { DataSection } from "@/components/settings/data-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 // Owned by the routines & notifications workstream (CONTRACTS): device
 // permission + test push, and the recent-notifications list.
-import { EnablePushServer } from "@/components/push/enable-push-server";
+import { EnablePushSection } from "@/components/push/enable-push-server";
 import { NotificationHistory } from "@/components/routines/notification-history";
 import type { NotificationToggles } from "@/lib/integrations/notification-kinds";
 import type { AiCall, ConnectedAccount, Domain, JobRun } from "@/lib/types";
@@ -103,7 +103,7 @@ export default async function SettingsPage({
 
       <SettingsSection title="Notifications">
         <div className="mb-5">
-          <EnablePushServer />
+          <EnablePushSection />
         </div>
         <NotificationsForm
           settings={settings}

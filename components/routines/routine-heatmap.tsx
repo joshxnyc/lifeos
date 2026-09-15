@@ -40,7 +40,7 @@ export function RoutineHeatmap({
   });
 
   const missesByColumn = WEEK_ORDER.map(
-    (_, col) => rows.filter((r) => r.cells[col].status === "missed").length,
+    (_, col) => rows.filter((r) => r.cells[col]?.status === "missed").length,
   );
 
   return (

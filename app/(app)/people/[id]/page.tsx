@@ -60,8 +60,13 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     text: string;
   };
   const timeline: { role: string; item: TimelineSource }[] = [];
-  for (const link of (links ?? []) as { role: string; source_items: TimelineSource | null }[]) {
-    if (link.source_items) timeline.push({ role: link.role, item: link.source_items });
+  // Supabase types a to-one embed as an array; it is a single row (or null).
+  for (const link of (links ?? []) as unknown as {
+    role: string;
+    source_items: TimelineSource | TimelineSource[] | null;
+  }[]) {
+    const item = Array.isArray(link.source_items) ? link.source_items[0] : link.source_items;
+    if (item) timeline.push({ role: link.role, item });
   }
   timeline.sort((a, b) => String(b.item.occurred_at ?? "").localeCompare(String(a.item.occurred_at ?? "")));
 

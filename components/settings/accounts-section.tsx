@@ -50,7 +50,6 @@ export function AccountsSection({
           {accounts.map((a) => (
             <Row
               key={a.id}
-              href={`/settings/accounts/${a.id}`}
               label={
                 <span className="flex flex-wrap items-center gap-2">
                   {a.label}
@@ -68,30 +67,25 @@ export function AccountsSection({
                   ) : null}
                 </>
               }
-            />
+            >
+              <Link
+                href={`/settings/accounts/${a.id}`}
+                className="inline-flex h-11 items-center rounded-card px-2 text-[14px] text-accent"
+              >
+                Calendars
+              </Link>
+              <Link
+                href="/api/auth/google/start"
+                prefetch={false}
+                className="inline-flex h-11 items-center rounded-card px-2 text-[14px] text-accent"
+              >
+                Reconnect
+              </Link>
+              <RemoveAccountButton id={a.id} label={a.label} />
+            </Row>
           ))}
         </Panel>
       )}
-
-      {accounts.length > 0 ? (
-        <div className="mt-2 flex flex-col gap-1">
-          {accounts.map((a) => (
-            <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 px-1">
-              <span className="text-[13px] text-ink-2">{a.label}</span>
-              <div className="flex items-center gap-1">
-                <Link
-                  href="/api/auth/google/start"
-                  prefetch={false}
-                  className="inline-flex h-11 items-center rounded-card px-2 text-[14px] text-accent"
-                >
-                  Reconnect
-                </Link>
-                <RemoveAccountButton id={a.id} label={a.label} />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </SettingsSection>
   );
 }

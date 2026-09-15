@@ -18,15 +18,17 @@ export function scheduleSummary(days: number[]): string {
   const runs: number[][] = [];
   for (const day of ordered) {
     const last = runs[runs.length - 1];
-    const prevIndex = last ? WEEK_ORDER.indexOf(last[last.length - 1]) : -2;
+    const lastDay = last?.[last.length - 1];
+    const prevIndex = lastDay !== undefined ? WEEK_ORDER.indexOf(lastDay) : -2;
     if (last && WEEK_ORDER.indexOf(day) === prevIndex + 1) last.push(day);
     else runs.push([day]);
   }
+  const label = (d: number | undefined) => (d === undefined ? "" : (DAY_LABELS[d] ?? ""));
   return runs
     .map((run) =>
       run.length >= 3
-        ? `${DAY_LABELS[run[0]]}–${DAY_LABELS[run[run.length - 1]]}`
-        : run.map((d) => DAY_LABELS[d]).join(", "),
+        ? `${label(run[0])}–${label(run[run.length - 1])}`
+        : run.map((d) => label(d)).join(", "),
     )
     .join(", ");
 }
