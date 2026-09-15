@@ -1,15 +1,58 @@
 "use client";
 
-// ⌘K command palette: global search plus quick-add (SPEC §9). ⌘J jumps to
-// capture. The tasks feature owns quick-add parsing (lib/domain/quick-add).
-import { useEffect, useState } from "react";
+// ⌘K command palette: navigation, search hand-off and real quick-add (SPEC §9).
+// ⌘J jumps to capture. Parsing is lib/domain/quick-add; writing is the tasks
+// server action. It also hosts the app's single toast outlet, because the
+// palette is mounted once in the app shell.
+
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
+import { createClient } from "@/lib/supabase/client";
+import { createTask } from "@/app/(app)/tasks/actions";
+import { ParsedChips, parseSafely } from "@/components/tasks/quick-add";
+import { ToastHost, toast } from "@/components/tasks/toast";
 import type { Domain, Project } from "@/lib/types";
+import type { PersonOption } from "@/components/tasks/types";
+
+const NAV: Array<[string, string]> = [
+  ["/today", "Today"],
+  ["/tasks", "Tasks"],
+  ["/capture", "Capture"],
+  ["/queue", "Queue"],
+  ["/routines", "Routines"],
+  ["/people", "People"],
+  ["/notes", "Notes"],
+  ["/search", "Search"],
+  ["/review", "Weekly Review"],
+  ["/settings", "Settings"],
+];
+
+const ITEM_CLASS =
+  "cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft";
+
+function localToday(timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en-CA").format(new Date());
+  }
+}
 
 export function CommandPalette({ domains, projects }: { domains: Domain[]; projects: Project[] }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [people, setPeople] = useState<PersonOption[]>([]);
+  const [timezone, setTimezone] = useState<string>(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+  );
+  const [loaded, setLoaded] = useState(false);
+  const [, startTransition] = useTransition();
   const router = useRouter();
 
   useEffect(() => {
@@ -27,7 +70,41 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
     return () => window.removeEventListener("keydown", onKey);
   }, [router]);
 
-  if (!open) return null;
+  // People and the timezone are only needed once the palette is used.
+  useEffect(() => {
+    if (!open || loaded) return;
+    setLoaded(true);
+    const supabase = createClient();
+    void (async () => {
+      const [{ data: peopleRows }, { data: tzRow }] = await Promise.all([
+        supabase.from("people").select("id, name").order("name").limit(300),
+        supabase.from("settings").select("value").eq("key", "timezone").maybeSingle(),
+      ]);
+      setPeople((peopleRows ?? []) as PersonOption[]);
+      const value = (tzRow as { value?: unknown } | null)?.value;
+      if (typeof value === "string" && value) setTimezone(value);
+    })();
+  }, [open, loaded]);
+
+  const domainOptions = useMemo(
+    () => domains.map((d) => ({ id: d.id, slug: d.slug, name: d.name })),
+    [domains],
+  );
+  const projectOptions = useMemo(
+    () => projects.map((p) => ({ id: p.id, name: p.name, domain_id: p.domain_id })),
+    [projects],
+  );
+  const today = useMemo(() => localToday(timezone), [timezone]);
+  const parsed = useMemo(
+    () =>
+      parseSafely(query, {
+        domains: domainOptions,
+        projects: projectOptions,
+        people,
+        today,
+      }),
+    [query, domainOptions, projectOptions, people, today],
+  );
 
   const go = (href: string) => {
     setOpen(false);
@@ -35,86 +112,117 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
     router.push(href);
   };
 
+  const add = () => {
+    const title = parsed.title.trim();
+    if (!title) return;
+    const project = projectOptions.find((p) => p.id === parsed.project_id);
+    const domainId = parsed.domain_id ?? project?.domain_id;
+    setOpen(false);
+    setQuery("");
+    startTransition(async () => {
+      const res = await createTask({
+        title,
+        domain_id: domainId,
+        project_id: parsed.project_id ?? null,
+        person_id: parsed.person_id ?? null,
+        priority: parsed.priority,
+        due_date: parsed.due_date ?? null,
+        due_time: parsed.due_time ?? null,
+        scheduled_date: parsed.scheduled_date ?? null,
+      });
+      toast(res.ok ? "Task added" : res.error);
+      if (res.ok) router.refresh();
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-ink/20 pt-[15vh]" onClick={() => setOpen(false)}>
-      <div className="mx-auto w-full max-w-lg px-4" onClick={(e) => e.stopPropagation()}>
-        <Command
-          shouldFilter
-          className="overflow-hidden rounded-card border border-line bg-paper shadow-whisper"
-        >
-          <Command.Input
-            autoFocus
-            value={query}
-            onValueChange={setQuery}
-            placeholder='Search, or add: "Send memo to Bernhard fri #tarifa !high"'
-            className="h-12 w-full border-b border-line bg-transparent px-4 text-[15px] outline-none placeholder:text-ink-3"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setOpen(false);
-            }}
-          />
-          <Command.List className="max-h-72 overflow-y-auto p-2">
-            {query.trim() ? (
-              <Command.Item
-                value={`add ${query}`}
-                onSelect={() => go(`/tasks?add=${encodeURIComponent(query)}`)}
-                className="cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft"
-              >
-                Add task: “{query}”
-              </Command.Item>
-            ) : null}
-            {query.trim() ? (
-              <Command.Item
-                value={`search ${query}`}
-                onSelect={() => go(`/search?q=${encodeURIComponent(query)}`)}
-                className="cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft"
-              >
-                Search everything for “{query}”
-              </Command.Item>
-            ) : null}
-            <Command.Group heading="Go to" className="[&_[cmdk-group-heading]]:section-label [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5">
-              {[
-                ["/today", "Today"],
-                ["/tasks", "Tasks"],
-                ["/queue", "Queue"],
-                ["/routines", "Routines"],
-                ["/people", "People"],
-                ["/notes", "Notes"],
-                ["/review", "Weekly Review"],
-                ["/settings", "Settings"],
-              ].map(([href, label]) => (
-                <Command.Item
-                  key={href}
-                  value={label}
-                  onSelect={() => go(href as string)}
-                  className="cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft"
+    <>
+      <ToastHost />
+      {open ? (
+        <div className="fixed inset-0 z-50 bg-ink/20 pt-[15vh]" onClick={() => setOpen(false)}>
+          <div className="mx-auto w-full max-w-lg px-4" onClick={(e) => e.stopPropagation()}>
+            <Command
+              shouldFilter
+              className="overflow-hidden rounded-card border border-line bg-paper shadow-whisper"
+            >
+              <Command.Input
+                autoFocus
+                value={query}
+                onValueChange={setQuery}
+                placeholder='Search, or add: "Send memo to Bernhard fri #tarifa !high"'
+                className="h-12 w-full border-b border-line bg-transparent px-4 text-[15px] outline-none placeholder:text-ink-3"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setOpen(false);
+                }}
+              />
+              {query.trim() ? (
+                <div className="border-b border-line px-4 py-2">
+                  <p className="truncate text-[13px] text-ink">{parsed.title || "…"}</p>
+                  <ParsedChips
+                    parsed={parsed}
+                    domains={domainOptions}
+                    projects={projectOptions}
+                    people={people}
+                    today={today}
+                    className="mt-1.5"
+                  />
+                </div>
+              ) : null}
+              <Command.List className="max-h-72 overflow-y-auto p-2">
+                {query.trim() ? (
+                  <Command.Item value={`add ${query}`} onSelect={add} className={ITEM_CLASS}>
+                    Add task: “{parsed.title || query}”
+                  </Command.Item>
+                ) : null}
+                {query.trim() ? (
+                  <Command.Item
+                    value={`search ${query}`}
+                    onSelect={() => go(`/search?q=${encodeURIComponent(query)}`)}
+                    className={ITEM_CLASS}
+                  >
+                    Search everything for “{query}”
+                  </Command.Item>
+                ) : null}
+                <Command.Group
+                  heading="Go to"
+                  className="[&_[cmdk-group-heading]]:section-label [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5"
                 >
-                  {label}
-                </Command.Item>
-              ))}
-              {domains.map((d) => (
-                <Command.Item
-                  key={d.id}
-                  value={`domain ${d.name}`}
-                  onSelect={() => go(`/domains/${d.slug}`)}
-                  className="cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft"
-                >
-                  {d.name}
-                </Command.Item>
-              ))}
-              {projects.map((p) => (
-                <Command.Item
-                  key={p.id}
-                  value={`project ${p.name}`}
-                  onSelect={() => go(`/projects/${p.id}`)}
-                  className="cursor-pointer rounded-card px-3 py-2 text-[14px] data-[selected=true]:bg-accent-soft"
-                >
-                  {p.name}
-                </Command.Item>
-              ))}
-            </Command.Group>
-          </Command.List>
-        </Command>
-      </div>
-    </div>
+                  {NAV.map(([href, label]) => (
+                    <Command.Item
+                      key={href}
+                      value={label}
+                      onSelect={() => go(href)}
+                      className={ITEM_CLASS}
+                    >
+                      {label}
+                    </Command.Item>
+                  ))}
+                  {domains.map((d) => (
+                    <Command.Item
+                      key={d.id}
+                      value={`domain ${d.name}`}
+                      onSelect={() => go(`/domains/${d.slug}`)}
+                      className={ITEM_CLASS}
+                    >
+                      {d.name}
+                    </Command.Item>
+                  ))}
+                  {projects.map((p) => (
+                    <Command.Item
+                      key={p.id}
+                      value={`project ${p.name}`}
+                      onSelect={() => go(`/projects/${p.id}`)}
+                      className={ITEM_CLASS}
+                    >
+                      {p.name}
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              </Command.List>
+            </Command>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

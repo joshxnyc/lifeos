@@ -121,6 +121,62 @@ export async function queryDatabase(
   return out;
 }
 
+export interface NotionPropertyInfo {
+  name: string;
+  type: string;
+  /** select / status / multi_select option names, for the "done values" picker. */
+  options: string[];
+}
+
+export interface NotionDatabaseInfo {
+  id: string;
+  name: string;
+  url: string;
+  properties: NotionPropertyInfo[];
+}
+
+/**
+ * Every database the integration has been shared with, with its property
+ * schema — this is what Settings shows so Joshua can see what Notion has
+ * actually granted and map the task-like ones (SPEC §6.2).
+ */
+export async function listDatabases(): Promise<NotionDatabaseInfo[]> {
+  const notion = client();
+  const out: NotionDatabaseInfo[] = [];
+  let cursor: string | undefined;
+
+  do {
+    const res = (await notion.search({
+      filter: { property: "object", value: "database" },
+      page_size: 50,
+      start_cursor: cursor,
+    })) as unknown as { results: RawResult[]; next_cursor: string | null; has_more: boolean };
+
+    for (const raw of res.results) {
+      const props = (raw.properties ?? {}) as Record<string, { type?: string } & Record<string, unknown>>;
+      out.push({
+        id: raw.id,
+        name: richText(raw.title) || "Untitled database",
+        url: raw.url ?? `https://www.notion.so/${raw.id.replace(/-/g, "")}`,
+        properties: Object.entries(props).map(([name, prop]) => ({
+          name,
+          type: prop?.type ?? "unknown",
+          options: optionNames(prop),
+        })),
+      });
+    }
+    cursor = res.has_more ? (res.next_cursor ?? undefined) : undefined;
+  } while (cursor);
+
+  return out;
+}
+
+function optionNames(prop: ({ type?: string } & Record<string, unknown>) | undefined): string[] {
+  if (!prop?.type) return [];
+  const holder = prop[prop.type] as { options?: Array<{ name?: string }> } | undefined;
+  return (holder?.options ?? []).map((o) => o.name ?? "").filter(Boolean);
+}
+
 export interface NotionBlock {
   id: string;
   type: string;

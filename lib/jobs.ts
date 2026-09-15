@@ -26,14 +26,22 @@ export function jobRoute(jobName: string, handler: JobHandler) {
     }
 
     const supabase = createServiceClient();
+    // Resolve the owner before logging: job_runs rows need user_id or the
+    // RLS-scoped Settings panel and export cannot see them.
+    let userId: string | null = null;
+    try {
+      userId = await singleUserId(supabase);
+    } catch {
+      // fall through — the run row is still written, the handler will fail loudly
+    }
     const { data: run } = await supabase
       .from("job_runs")
-      .insert({ job: jobName, status: "running" })
+      .insert({ job: jobName, status: "running", user_id: userId })
       .select("id")
       .single();
 
     try {
-      const userId = await singleUserId(supabase);
+      if (!userId) userId = await singleUserId(supabase); // surface the real error
       const stats = await handler({ supabase, userId, now: new Date() });
       if (run) {
         await supabase

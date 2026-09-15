@@ -145,6 +145,22 @@ describe("parseQuickAdd", () => {
     expect(r.due_date).toBeUndefined();
   });
 
+  it("does not read a date out of the middle of the title", () => {
+    const r = parseQuickAdd("Call fri about the memo", ctx);
+    expect(r.title).toBe("Call fri about the memo");
+    expect(r.due_date).toBeUndefined();
+  });
+
+  it("does not read an article as a date", () => {
+    const r = parseQuickAdd("Plan the week", ctx);
+    expect(r.title).toBe("Plan the week");
+    expect(r.due_date).toBeUndefined();
+  });
+
+  it("reports the whole matched phrase as the due token", () => {
+    expect(parseQuickAdd("Ship it next week", ctx).tokens).toEqual([{ raw: "next week", kind: "due" }]);
+  });
+
   it("sets the scheduled date from ~token", () => {
     const r = parseQuickAdd("Deep work on the memo ~sat", ctx);
     expect(r.title).toBe("Deep work on the memo");
