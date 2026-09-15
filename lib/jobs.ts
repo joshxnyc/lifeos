@@ -26,13 +26,15 @@ export function jobRoute(jobName: string, handler: JobHandler) {
     }
 
     const supabase = createServiceClient();
-    // Resolve the owner before logging: job_runs rows need user_id or the
-    // RLS-scoped Settings panel and export cannot see them.
-    let userId: string | null = null;
+    // Resolve the owner before logging: job_runs.user_id is NOT NULL so the
+    // RLS-scoped Settings panel can always see runs. No owner → fail loudly
+    // with no orphan row.
+    let userId: string;
     try {
       userId = await singleUserId(supabase);
-    } catch {
-      // fall through — the run row is still written, the handler will fail loudly
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ ok: false, error: `owner unresolved: ${message}` }, { status: 500 });
     }
     const { data: run } = await supabase
       .from("job_runs")
@@ -41,7 +43,6 @@ export function jobRoute(jobName: string, handler: JobHandler) {
       .single();
 
     try {
-      if (!userId) userId = await singleUserId(supabase); // surface the real error
       const stats = await handler({ supabase, userId, now: new Date() });
       if (run) {
         await supabase

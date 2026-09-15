@@ -1,11 +1,41 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
-// Refreshes the Supabase session cookie and gates every app route behind
-// auth. /api/jobs/* authenticates via JOBS_SECRET instead; /login and PWA
-// assets are public.
+// Refreshes the Supabase session cookie, gates every app route behind auth,
+// and sets the CSP with a per-request script nonce (no 'unsafe-inline').
+// /api/jobs/* authenticates via JOBS_SECRET instead; /login and PWA assets
+// are public.
+
+function cspFor(nonce: string): string {
+  const supabaseOrigin = (() => {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").origin;
+    } catch {
+      return "";
+    }
+  })();
+  const dev = process.env.NODE_ENV === "development";
+  return [
+    "default-src 'self'",
+    // strict-dynamic lets nonce'd Next bootstrap scripts load their chunks.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    `connect-src 'self' ${supabaseOrigin} ${supabaseOrigin.replace("https://", "wss://")}`,
+    "media-src 'self' blob:",
+    "worker-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
@@ -17,7 +47,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
+          response = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -42,11 +72,22 @@ export async function middleware(request: NextRequest) {
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
+  // Single-user app: when OWNER_USER_ID is pinned, nobody else gets past
+  // login even with a valid Supabase session (signups should also be
+  // disabled in the Supabase dashboard).
+  const owner = process.env.OWNER_USER_ID;
+  if (user && owner && user.id !== owner && !isPublic) {
+    await supabase.auth.signOut();
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/today";
     return NextResponse.redirect(url);
   }
+  response.headers.set("Content-Security-Policy", cspFor(nonce));
   return response;
 }
 

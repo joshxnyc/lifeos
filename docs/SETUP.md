@@ -84,7 +84,13 @@ on conflict (key) do update set value = excluded.value;
 ```
 
 Finally create your user (Authentication → Add user) — this auto-seeds the
-four domains and default settings via a trigger.
+four domains and default settings via a trigger. Then, security musts:
+
+- **Disable public signups**: Authentication → Sign In / Up → turn "Allow new
+  users to sign up" off (the login page has no signup, but the Supabase API
+  would otherwise accept direct signups).
+- **Pin the owner**: copy your user's UUID (Authentication → Users) into the
+  `OWNER_USER_ID` env var in Vercel.
 
 ---
 

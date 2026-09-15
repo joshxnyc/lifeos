@@ -31,6 +31,10 @@ Format: `date — decision — reasoning — decided by (Joshua / Claude Code, c
 
 **Queue/people/review.** Kind labels map `task`→Commitment, spec has no separate Request kind. Undated follow-ups default to +3 days. Review "Delegate" converts the task to `owner=them` rather than duplicating it. Person "Park" clears the follow-up cadence. The scorecard freezes onto the review row when leaving step 1 so the coach reads the same numbers. `person-matching.md` prompt dropped — matching is deterministic by email. Coach `pattern_flags` are not persisted (no column).
 
+### 2026-09-15 — security-audit hardening
+
+An adversarial security pass reviewed the whole app. Fixes applied: pg_cron's `private.call_job` execute revoked from PUBLIC; the notification dedupe index scoped per user; `job_runs`/`ai_calls.user_id` made NOT NULL with jobs failing loudly when the owner can't be resolved; owner resolution pinned via `OWNER_USER_ID` env (falling back to the *oldest* auth user, never the newest) plus a middleware gate that signs out any other user; the service worker no longer caches `/api/*` (the export zip and transcripts were landing in CacheStorage) and runtime caches are cleared on reaching /login; CSP moved to middleware with a per-request script nonce replacing `'unsafe-inline'`; HSTS added. **Operational requirement: Joshua must disable public email signups in Supabase Auth settings and set `OWNER_USER_ID` in Vercel.** Remaining accepted risk, logged deliberately: extracted email/meeting text is untrusted LLM input — the accept/dismiss review queue is the primary mitigation (per the spec's own design); prompt-level hardening and accept-side id validation are applied as defence in depth.
+
 <!-- Pending entries the spec explicitly expects:
 - Google OAuth consent screen set to "In production" (or the Testing + token-expiry-alert fallback) — log when done, per SPEC §6.1.
 - Granola plan confirmed (Basic vs Business) → which adapter is active — per SPEC §6.3.

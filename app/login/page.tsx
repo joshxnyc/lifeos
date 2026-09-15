@@ -1,4 +1,5 @@
 import { login } from "./actions";
+import { ClearCaches } from "./clear-caches";
 
 export default async function LoginPage({
   searchParams,
@@ -8,6 +9,7 @@ export default async function LoginPage({
   const { error } = await searchParams;
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-6">
+      <ClearCaches />
       <h1 className="font-display text-[34px] font-semibold tracking-tight">LifeOS</h1>
       <p className="mt-1 text-ink-2">Sign in to continue.</p>
       <form action={login} className="mt-8 flex flex-col gap-3">
