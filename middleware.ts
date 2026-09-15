@@ -38,10 +38,20 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-    {
+  // Fail safe, never with a 500: if Supabase is unreachable or the env vars
+  // are missing/misnamed, treat the visitor as signed out. Every app page
+  // re-checks auth server-side, so failing toward /login loses nothing.
+  let user: { id: string } | null = null;
+  let supabase: ReturnType<typeof createServerClient> | null = null;
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
+    const supabaseAnonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
+      process.env.SUPABASE_ANON_KEY ??
+      "";
+    supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -54,12 +64,12 @@ export async function middleware(request: NextRequest) {
           );
         },
       },
-    },
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    });
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (err) {
+    console.error("middleware auth check failed:", err instanceof Error ? err.message : err);
+  }
 
   const { pathname } = request.nextUrl;
   const isPublic =
@@ -78,7 +88,7 @@ export async function middleware(request: NextRequest) {
   // disabled in the Supabase dashboard).
   const owner = process.env.OWNER_USER_ID;
   if (user && owner && user.id !== owner && !isPublic) {
-    await supabase.auth.signOut();
+    await supabase?.auth.signOut().catch(() => {});
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
