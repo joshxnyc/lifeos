@@ -12,7 +12,14 @@ import { getSettings } from "@/lib/settings";
 import { localDate } from "@/lib/time";
 import { nextOccurrence } from "@/lib/domain/recurrence";
 import type { Project, Task } from "@/lib/types";
-import type { ActionResult } from "@/components/tasks/types";
+import type {
+  ActionResult,
+  CreateProjectInput,
+  CreateTaskInput,
+  RescheduleInput,
+  UpdateProjectInput,
+  UpdateTaskInput,
+} from "@/components/tasks/types";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -66,12 +73,6 @@ const createProjectSchema = z.object({
 const updateProjectSchema = createProjectSchema.partial().extend({
   status: z.enum(["active", "parked", "done"]).optional(),
 });
-
-export type CreateTaskInput = z.input<typeof createTaskSchema>;
-export type UpdateTaskInput = z.input<typeof updateTaskSchema>;
-export type RescheduleInput = z.input<typeof rescheduleSchema>;
-export type CreateProjectInput = z.input<typeof createProjectSchema>;
-export type UpdateProjectInput = z.input<typeof updateProjectSchema>;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
