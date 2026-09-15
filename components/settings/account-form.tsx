@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { fetchCalendars, updateAccount, type CalendarOption } from "@/app/(app)/settings/actions";
 import { Button } from "@/components/ui/button";
 import { inputClass, Panel, selectClass } from "@/components/settings/ui";
-import type { ConnectedAccount, Domain } from "@/lib/types";
+import type { ConnectedAccountSummary, Domain } from "@/lib/types";
 
 /**
  * Per-account setup (SPEC §6.1): label, default domain for everything this
@@ -18,7 +18,7 @@ export function AccountForm({
   calendars,
   calendarError,
 }: {
-  account: ConnectedAccount;
+  account: ConnectedAccountSummary;
   domains: Domain[];
   calendars: CalendarOption[];
   calendarError: string | null;

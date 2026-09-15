@@ -3,7 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { DOMAIN_EDGE_CLASS } from "@/components/ui/domain";
+import { cn } from "@/lib/utils";
 import { goToStep, recordSlippedDecision } from "@/app/(app)/review/actions";
+import type { DomainSlug } from "@/lib/types";
 
 // DESIGN_BRIEF §5.9 step 2 — one overdue task at a time, centred, with its
 // context. Reschedule / Drop / Delegate. No skip.
@@ -13,6 +16,7 @@ export interface SlippedTask {
   title: string;
   due_date: string | null;
   domain_name: string | null;
+  domain_slug: DomainSlug | null;
   project_name: string | null;
   person_name: string | null;
   source_title: string | null;
@@ -103,7 +107,14 @@ export function SlippedStep({
 
       {/* Canvas 1n: one decision card raised off the paper, the overdue count
           as a danger label, the title in Fraunces, context underneath. */}
-      <article className="mt-3 rounded-card border border-line bg-raise px-[18px] py-[22px] shadow-whisper">
+      {/* The 3px domain edge (canvas 1n) says whose life this slipped from
+          before the context line is read. */}
+      <article
+        className={cn(
+          "mt-3 rounded-card border border-line bg-raise px-[18px] py-[22px] shadow-whisper",
+          task.domain_slug ? `border-l-[3px] ${DOMAIN_EDGE_CLASS[task.domain_slug]}` : null,
+        )}
+      >
         {task.days_overdue ? (
           <p className="section-label text-danger">Overdue {task.days_overdue} days</p>
         ) : (

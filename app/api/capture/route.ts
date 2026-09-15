@@ -18,7 +18,10 @@ const jsonSchema = z
     // bucket, so the audio never passes through this route.
     audioPath: z
       .string()
-      .regex(/^[0-9a-zA-Z-]+\.(m4a|webm|ogg|mp3|wav|flac)$/, "audioPath must be <uuid>.<ext>")
+      .regex(
+        /^[0-9a-fA-F-]{36}\/[0-9a-fA-F-]{36}\.(m4a|webm|ogg|mp3|wav|flac)$/,
+        "audioPath must be <user id>/<uuid>.<ext>",
+      )
       .optional(),
   })
   .refine((v) => Boolean(v.text) !== Boolean(v.audioPath), {
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     if (file instanceof File) {
       const ext = extForMime(file.type);
-      const path = `${crypto.randomUUID()}.${ext}`;
+      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error } = await supabase.storage
         .from("captures")
         .upload(path, Buffer.from(await file.arrayBuffer()), {
@@ -77,6 +80,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "invalid body" }, { status: 400 });
     }
     ({ source, text, audioPath } = parsed.data);
+
+    // The client uploads straight to storage, so the path it hands back is
+    // only trusted once it is inside this user's own folder.
+    if (audioPath && !audioPath.startsWith(`${user.id}/`)) {
+      return NextResponse.json({ error: "audioPath is not yours" }, { status: 403 });
+    }
   }
 
   const { data: capture, error } = await supabase

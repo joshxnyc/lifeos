@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, FileText, Mail, NotebookPen, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { safeHttpUrl } from "@/lib/utils";
 import { DomainChip, PersonAvatar } from "@/components/ui/domain";
 import type { Domain, Person, SourceItem, SourceKind, Suggestion, Task } from "@/lib/types";
 
@@ -78,6 +79,8 @@ export default async function SourceItemPage({ params }: { params: Promise<{ id:
 
   const Glyph = GLYPH[item.kind] ?? FileText;
   const produced = suggestions.length + tasks.length;
+  // The URL came from a third party; only http(s) is rendered as a link.
+  const externalUrl = safeHttpUrl(item.external_url);
 
   return (
     <div className="pt-6">
@@ -95,11 +98,11 @@ export default async function SourceItemPage({ params }: { params: Promise<{ id:
             ? new Date(item.occurred_at).toLocaleString()
             : new Date(item.fetched_at).toLocaleString()}
         </span>
-        {item.external_url ? (
+        {externalUrl ? (
           <a
-            href={item.external_url}
+            href={externalUrl}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[13px] text-accent"
           >
             Open original <ExternalLink size={13} />

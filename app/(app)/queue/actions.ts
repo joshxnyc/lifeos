@@ -53,6 +53,36 @@ async function bumpProject(supabase: SupabaseClient, projectId: string | null | 
 }
 
 /**
+ * Every id in `proposed` was written by the model from third-party text, so
+ * none of them is trusted: an id that doesn't resolve to one of Joshua's own
+ * rows is dropped and the accept continues without that link (the domain then
+ * falls back to the item's, or Personal).
+ */
+async function sanitizeIds(
+  supabase: SupabaseClient,
+  userId: string,
+  proposed: SuggestionProposed,
+): Promise<SuggestionProposed> {
+  const owns = async (table: string, id: string | null | undefined): Promise<boolean> => {
+    if (!id) return false;
+    const { data } = await supabase
+      .from(table)
+      .select("id")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    return Boolean(data);
+  };
+
+  const clean: SuggestionProposed = { ...proposed };
+  if (!(await owns("domains", clean.domain_id))) delete clean.domain_id;
+  if (!(await owns("projects", clean.project_id))) delete clean.project_id;
+  if (!(await owns("people", clean.person_id))) delete clean.person_id;
+  if (!(await owns("tasks", clean.existing_task_id))) delete clean.existing_task_id;
+  return clean;
+}
+
+/**
  * Accept a suggestion, optionally with the edits Joshua made on the card.
  * Everything a kind can create is created here; the suggestion is then closed
  * with `accepted` and, where it made one, the resulting task id.
@@ -70,7 +100,10 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
   const suggestion = row as Suggestion;
   if (suggestion.status !== "pending") return; // already resolved: idempotent
 
-  const proposed: SuggestionProposed = { ...(suggestion.proposed ?? {}), ...patch };
+  const proposed = await sanitizeIds(supabase, userId, {
+    ...(suggestion.proposed ?? {}),
+    ...patch,
+  });
   const settings = await getSettings(supabase, userId);
   const today = localDate(new Date(), settings.timezone);
   let resultingTaskId: string | null = null;

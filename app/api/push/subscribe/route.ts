@@ -19,6 +19,18 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "invalid subscription" }, { status: 400 });
 
   const { endpoint, keys, deviceLabel } = parsed.data;
+
+  // endpoint is the conflict target, so an upsert would otherwise rewrite
+  // another user's row (and send their notifications to this device).
+  const { data: existing } = await supabase
+    .from("push_subscriptions")
+    .select("user_id")
+    .eq("endpoint", endpoint)
+    .maybeSingle();
+  if (existing && existing.user_id !== user.id) {
+    return NextResponse.json({ error: "endpoint already registered" }, { status: 409 });
+  }
+
   const { error } = await supabase.from("push_subscriptions").upsert(
     {
       user_id: user.id,
@@ -43,6 +55,6 @@ export async function DELETE(req: NextRequest) {
 
   const { endpoint } = (await req.json()) as { endpoint?: string };
   if (!endpoint) return NextResponse.json({ error: "endpoint required" }, { status: 400 });
-  await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
+  await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint).eq("user_id", user.id);
   return NextResponse.json({ ok: true });
 }

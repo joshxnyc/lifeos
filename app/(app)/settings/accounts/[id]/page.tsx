@@ -6,7 +6,7 @@ import { StatusPill } from "@/components/settings/ui";
 import { AccountForm } from "@/components/settings/account-form";
 import { getGoogleClientForAccount } from "@/lib/integrations/google/client";
 import { listCalendars } from "@/lib/integrations/google/calendar";
-import { safeErrorMessage } from "@/lib/integrations/accounts";
+import { safeErrorMessage, toAccountSummary } from "@/lib/integrations/accounts";
 import type { CalendarOption } from "@/app/(app)/settings/actions";
 import type { ConnectedAccount, Domain } from "@/lib/types";
 
@@ -21,6 +21,8 @@ export default async function AccountSettingsPage({
   const { connected } = await searchParams;
   const supabase = await createClient();
 
+  // The full row (tokens included) stays on the server for the Google client;
+  // only toAccountSummary() of it reaches the client component below.
   const [{ data: accountRow }, { data: domainRows }] = await Promise.all([
     supabase.from("connected_accounts").select("*").eq("id", id).maybeSingle(),
     supabase.from("domains").select("*").order("sort_order"),
@@ -75,7 +77,7 @@ export default async function AccountSettingsPage({
       ) : null}
 
       <AccountForm
-        account={account}
+        account={toAccountSummary(account)}
         domains={domains}
         calendars={calendars}
         calendarError={calendarError}

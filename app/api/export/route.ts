@@ -31,8 +31,10 @@ const TABLES: { name: string; select?: string; order?: string; limit?: number }[
   { name: "people_source_items" },
   {
     name: "connected_accounts",
+    // sync_state carries the MCP client registration and PKCE verifier, so it
+    // is left out with the token columns.
     select:
-      "id, user_id, created_at, updated_at, provider, label, external_identity, default_domain_id, token_expires_at, scopes, sync_state, writable_calendar_id, read_calendar_ids, status, last_synced_at, last_error",
+      "id, user_id, created_at, updated_at, provider, label, external_identity, default_domain_id, token_expires_at, scopes, writable_calendar_id, read_calendar_ids, status, last_synced_at, last_error",
   },
   { name: "source_items" },
   { name: "calendar_events" },
@@ -97,7 +99,7 @@ export async function GET() {
       "json/  one file per table, exactly as stored.",
       "notes/ every note as markdown, front matter for the metadata.",
       "",
-      "Access tokens are deliberately not included.",
+      "Access tokens and account sync state are deliberately not included.",
       "",
       Object.entries(counts)
         .map(([name, count]) => `${name}: ${count}`)

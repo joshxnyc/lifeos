@@ -38,6 +38,10 @@ export function addDays(dateStr: string, days: number): string {
  * True when a job scheduled for a local time-of-day should fire on this tick:
  * the target time falls within (lastTick, now] in local time. Ticks run every
  * 15 minutes, so we check "now is within 15 minutes after target".
+ *
+ * The comparison is modular over the 1440-minute day, so a target in the last
+ * window before midnight (23:50 with 15-minute ticks) still fires on the 00:00
+ * tick instead of being skipped by a negative day-wide difference.
  */
 export function isDueNow(nowHHmm: string, targetHHmm: string, windowMinutes = 15): boolean {
   const toMin = (s: string) => {
@@ -46,6 +50,6 @@ export function isDueNow(nowHHmm: string, targetHHmm: string, windowMinutes = 15
   };
   const now = toMin(nowHHmm);
   const target = toMin(targetHHmm);
-  const diff = now - target;
-  return diff >= 0 && diff < windowMinutes;
+  const diff = (((now - target) % 1440) + 1440) % 1440;
+  return diff < windowMinutes;
 }

@@ -4,6 +4,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { serverEnv } from "@/lib/env";
 import { decryptToken, encryptToken } from "@/lib/crypto";
+import { signState } from "@/lib/integrations/oauth-state";
 import type { ConnectedAccount } from "@/lib/types";
 
 /**
@@ -17,6 +18,9 @@ import type { ConnectedAccount } from "@/lib/types";
  */
 
 export const GRANOLA_MCP_URL = "https://mcp.granola.ai/mcp";
+
+/** CSRF cookie for the Granola connect flow; holds the unsigned nonce. */
+export const GRANOLA_STATE_COOKIE = "lifeos_granola_oauth_state";
 
 export function granolaRedirectUri(): string {
   return `${serverEnv().APP_URL.replace(/\/$/, "")}/api/auth/granola/callback`;
@@ -36,8 +40,19 @@ export class GranolaOAuthProvider implements OAuthClientProvider {
     private readonly supabase: SupabaseClient,
     private account: ConnectedAccount,
     private readonly onRedirect?: (url: URL) => void,
+    private readonly stateNonce?: string,
   ) {
     this.syncState = (account.sync_state ?? {}) as GranolaSyncState;
+  }
+
+  /**
+   * The SDK appends this to the authorization URL. It is the same signed
+   * nonce the start route puts in an httpOnly cookie, so the callback can
+   * prove the code came back to the browser that began the flow.
+   */
+  state(): string {
+    if (!this.stateNonce) throw new Error("No OAuth state nonce — restart the Granola connect flow");
+    return signState(this.stateNonce);
   }
 
   get redirectUrl(): string {
@@ -94,6 +109,10 @@ export class GranolaOAuthProvider implements OAuthClientProvider {
       .select("*")
       .single();
     if (data) this.account = data as ConnectedAccount;
+
+    // The PKCE verifier is one flow long; a stored one outliving the exchange
+    // is only useful to an attacker replaying a code.
+    if (this.syncState.mcp_code_verifier) await this.patchState({ mcp_code_verifier: undefined });
   }
 
   redirectToAuthorization(authorizationUrl: URL): void {

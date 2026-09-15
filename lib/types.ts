@@ -199,6 +199,25 @@ export interface ConnectedAccount extends Base {
   last_error: string | null;
 }
 
+/**
+ * What the UI is allowed to see of a connected account: no token columns and
+ * no sync_state (which carries OAuth client secrets and cursors). Anything
+ * rendered by a client component takes this, never the row.
+ */
+export type ConnectedAccountSummary = Pick<
+  ConnectedAccount,
+  | "id"
+  | "provider"
+  | "label"
+  | "external_identity"
+  | "status"
+  | "default_domain_id"
+  | "read_calendar_ids"
+  | "writable_calendar_id"
+  | "last_synced_at"
+  | "last_error"
+>;
+
 export interface SourceItem extends Base {
   account_id: string | null;
   provider: string;

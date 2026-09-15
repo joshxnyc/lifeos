@@ -154,6 +154,12 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                 className="h-14 w-full border-b border-line bg-transparent px-[18px] text-[17px] outline-none placeholder:text-ink-3"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setOpen(false);
+                  // ⌘⏎ adds the parsed task without having to walk the list to
+                  // the "Add task" row; plain ⏎ still runs whatever is selected.
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && parsed.title.trim()) {
+                    e.preventDefault();
+                    add();
+                  }
                 }}
               />
               {query.trim() ? (
@@ -224,6 +230,12 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                   ))}
                 </Command.Group>
               </Command.List>
+              {/* Canvas 2j: the syntax and the keys that work here, on a
+                  hairline. ink-2 because both carry information (§8). */}
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-[18px] py-2 text-[11px] text-ink-2">
+                <span className="font-mono">#domain/project · @person · !priority · ~date</span>
+                <span className="font-mono">↑↓ move · ⏎ open · ⌘⏎ add task · esc close</span>
+              </div>
             </Command>
           </div>
         </div>

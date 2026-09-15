@@ -17,13 +17,13 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
 
-  const item = (href: string, label: string, badge?: number) => (
+  const item = (href: string, label: string, badge?: number, hint?: string) => (
     <Link
       href={href}
       className={cn(
         // Canvas 2j: the current page lifts to paper on the paper-2 rail;
         // the accent stays reserved for actions and counts.
-        "flex min-h-11 items-center justify-between rounded-[8px] px-2.5 py-1.5 text-[14px]",
+        "flex min-h-11 items-center justify-between gap-2 rounded-[8px] px-2.5 py-1.5 text-[14px]",
         pathname === href || pathname.startsWith(`${href}/`)
           ? "bg-paper font-medium text-ink"
           : "text-ink-2 hover:text-ink",
@@ -35,6 +35,9 @@ export function Sidebar({
           {badge}
         </span>
       ) : null}
+      {/* The shortcut is information, not decoration, so it stays at ink-2
+          (DESIGN_BRIEF §8 reserves ink-3 for placeholders and disabled). */}
+      {hint ? <span className="font-mono text-[11px] text-ink-2">{hint}</span> : null}
     </Link>
   );
 
@@ -47,9 +50,11 @@ export function Sidebar({
         {item("/today", "Today")}
         {item("/queue", "Queue", queueCount)}
         {item("/tasks", "Tasks")}
+        {item("/capture", "Capture", undefined, "⌘J")}
         {item("/routines", "Routines")}
         {item("/people", "People")}
         {item("/notes", "Notes")}
+        {item("/search", "Search", undefined, "⌘K")}
         {item("/review", "Review")}
       </nav>
       <div className="mt-6 flex flex-col gap-0.5">

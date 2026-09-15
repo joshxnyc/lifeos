@@ -33,10 +33,14 @@ const uuid = z.string().uuid();
 
 // Keeps an app-created calendar block in step with its task (SPEC §6.1c).
 // Best-effort: a Google hiccup must never fail the task mutation.
-async function syncCalendarBlock(task: Pick<Task, "calendar_event_id">, taskId: string) {
+async function syncCalendarBlock(
+  task: Pick<Task, "calendar_event_id">,
+  taskId: string,
+  userId: string,
+) {
   if (!task.calendar_event_id) return;
   try {
-    await syncTaskCalendarEvent(taskId);
+    await syncTaskCalendarEvent(taskId, userId);
   } catch {
     // sync-google surfaces persistent calendar failures; ignore here
   }
@@ -256,7 +260,7 @@ export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Ac
   if (error) return { ok: false, error: error.message };
 
   await bumpProjects(c, [task.project_id, v.project_id]);
-  await syncCalendarBlock(task, id);
+  await syncCalendarBlock(task, id, c.userId);
   revalidateTaskViews();
   return { ok: true, id };
 }
@@ -315,7 +319,7 @@ export async function completeTask(id: string): Promise<ActionResult> {
   }
 
   await bumpProjects(c, [task.project_id]);
-  await syncCalendarBlock(task, id); // done → the event title gets a "✓"
+  await syncCalendarBlock(task, id, c.userId); // done → the event title gets a "✓"
   revalidateTaskViews();
   return { ok: true, id };
 }
@@ -389,7 +393,7 @@ export async function rescheduleTask(id: string, input: RescheduleInput): Promis
   if (error) return { ok: false, error: error.message };
 
   await bumpProjects(c, [task.project_id]);
-  await syncCalendarBlock(task, id);
+  await syncCalendarBlock(task, id, c.userId);
   revalidateTaskViews();
   return { ok: true, id };
 }
@@ -405,7 +409,7 @@ export async function deleteTask(id: string): Promise<ActionResult> {
 
   if (task.calendar_event_id) {
     try {
-      await removeTaskCalendarEvent(id); // app-created events only (SPEC §6.1)
+      await removeTaskCalendarEvent(id, c.userId); // app-created events only (SPEC §6.1)
     } catch {
       // never block the delete on a calendar failure
     }

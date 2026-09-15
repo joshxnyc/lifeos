@@ -45,14 +45,29 @@ function plural(n: number, word: string): string {
 
 /**
  * Decide whether this 15-minute tick should plan the day: either we are in the
- * window after 06:30 local, or the day has no plan yet and it is still morning
- * (a missed tick, a cold deploy, a phone that woke up late).
+ * window after the planning time, or the day has no plan yet and it is still
+ * morning (a missed tick, a cold deploy, a phone that woke up late).
+ *
+ * Planning normally runs at 06:30, half an hour before the default brief. If
+ * the brief is set earlier than that, planning moves with it — otherwise the
+ * plan would not exist when the brief is due and the brief would go out late.
  */
 const PLANNING_TIME = "06:30";
 
-export function shouldPlanNow(localHHmm: string, hasPlan: boolean): boolean {
-  if (isDueNow(localHHmm, PLANNING_TIME)) return true;
-  return !hasPlan && localHHmm >= PLANNING_TIME && localHHmm < "12:00";
+export function planningTimeFor(morningBriefTime?: string | null): string {
+  if (!morningBriefTime || !/^([01]\d|2[0-3]):[0-5]\d/.test(morningBriefTime)) return PLANNING_TIME;
+  const brief = morningBriefTime.slice(0, 5);
+  return brief < PLANNING_TIME ? brief : PLANNING_TIME;
+}
+
+export function shouldPlanNow(
+  localHHmm: string,
+  hasPlan: boolean,
+  morningBriefTime?: string | null,
+): boolean {
+  const planningTime = planningTimeFor(morningBriefTime);
+  if (isDueNow(localHHmm, planningTime)) return true;
+  return !hasPlan && localHHmm >= planningTime && localHHmm < "12:00";
 }
 
 export async function planMorning(
@@ -72,7 +87,7 @@ export async function planMorning(
     .eq("date", today)
     .maybeSingle();
 
-  if (!shouldPlanNow(timeNow, Boolean(existingPlan))) {
+  if (!shouldPlanNow(timeNow, Boolean(existingPlan), settings.morning_brief_time)) {
     return { skipped: true, reason: "not the planning window", local_time: timeNow };
   }
 

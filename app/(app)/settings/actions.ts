@@ -272,3 +272,34 @@ export async function saveTheme(input: z.infer<typeof Theme>): Promise<ActionRes
   revalidatePath("/settings");
   return { ok: true };
 }
+
+/**
+ * Timezone. Everything that turns a timestamp into a local day or time reads
+ * `settings.timezone`, so this is the one place it can change. The value is
+ * checked against the platform's own zone table rather than a hand-kept list.
+ */
+const Timezone = z.object({
+  timezone: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .refine((tz) => {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Unknown timezone"),
+});
+
+export async function saveTimezone(input: z.infer<typeof Timezone>): Promise<ActionResult> {
+  const parsed = Timezone.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Unknown timezone" };
+  const { supabase, userId } = await userScope();
+  await setSetting(supabase, userId, "timezone", parsed.data.timezone);
+  revalidatePath("/settings");
+  revalidatePath("/today");
+  return { ok: true };
+}

@@ -5,7 +5,9 @@ import {
   ensureGranolaAccount,
   GranolaOAuthProvider,
   GRANOLA_MCP_URL,
+  GRANOLA_STATE_COOKIE,
 } from "@/lib/integrations/granola/oauth-provider";
+import { newNonce } from "@/lib/integrations/oauth-state";
 
 /**
  * Connect Granola over MCP OAuth 2.0 with Dynamic Client Registration
@@ -30,9 +32,15 @@ export async function GET(req: NextRequest) {
     // Held in an object so the assignment inside the callback is visible to
     // TypeScript's control flow analysis.
     const redirect: { url: URL | null } = { url: null };
-    const provider = new GranolaOAuthProvider(supabase, account, (url) => {
-      redirect.url = url;
-    });
+    const nonce = newNonce();
+    const provider = new GranolaOAuthProvider(
+      supabase,
+      account,
+      (url) => {
+        redirect.url = url;
+      },
+      nonce,
+    );
 
     const { auth } = await import("@modelcontextprotocol/sdk/client/auth.js");
     const result = await auth(provider, { serverUrl: GRANOLA_MCP_URL });
@@ -41,7 +49,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(new URL("/settings?granola=connected", req.url));
     }
     if (!redirect.url) throw new Error("Granola did not return an authorization URL");
-    return NextResponse.redirect(redirect.url.toString());
+
+    // The signed nonce rode out in `state`; the raw one stays in the browser
+    // so the callback can prove the two belong together (CSRF).
+    const res = NextResponse.redirect(redirect.url.toString());
+    res.cookies.set(GRANOLA_STATE_COOKIE, nonce, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/auth/granola",
+      maxAge: 600,
+    });
+    return res;
   } catch (err) {
     const message = err instanceof Error ? err.message : "granola_oauth_failed";
     return NextResponse.redirect(

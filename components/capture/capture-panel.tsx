@@ -8,6 +8,12 @@ import { Button } from "@/components/ui/button";
 import { DomainChip } from "@/components/ui/domain";
 import { Waveform } from "@/components/capture/waveform";
 import { undoCaptureItem } from "@/app/(app)/capture/actions";
+import {
+  isNetworkError,
+  listQueued,
+  queueCapture,
+  removeQueued,
+} from "@/components/capture/offline-queue";
 import type { CaptureResult, Domain, DomainSlug, Project } from "@/lib/types";
 
 type Phase = "idle" | "recording" | "working" | "result";
@@ -41,6 +47,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   const [row, setRow] = useState<CaptureRow | null>(null);
   const [meta, setMeta] = useState<Record<string, RowMeta>>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const [offlineNote, setOfflineNote] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -67,6 +74,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
 
   const startRecording = async () => {
     setProblem(null);
+    setOfflineNote(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -111,26 +119,64 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
 
   // ---- sending -------------------------------------------------------------
 
-  const sendAudio = async (blob: Blob) => {
-    try {
+  const uploadAudio = useCallback(
+    async (blob: Blob): Promise<string> => {
       const subtype = (blob.type.split("/")[1] ?? "mp4").split(";")[0]!;
-      const path = `${crypto.randomUUID()}.${EXT[subtype] ?? "m4a"}`;
+      // Audio lives in the owner's own folder: the storage policy only allows
+      // a path whose first segment is the signed-in user's id.
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      if (!userId) throw new Error("Session expired. Sign in again.");
+      const path = `${userId}/${crypto.randomUUID()}.${EXT[subtype] ?? "m4a"}`;
       const { error } = await supabase.storage
         .from("captures")
         .upload(path, blob, { contentType: blob.type || "audio/mp4", upsert: false });
       if (error) throw new Error(error.message);
+      return path;
+    },
+    [supabase],
+  );
 
-      const res = await fetch("/api/capture", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ audioPath: path, source: isPhone() ? "phone_voice" : "desktop_voice" }),
-      });
-      const body = (await res.json()) as { captureId?: string; error?: string };
-      if (!res.ok || !body.captureId) throw new Error(body.error ?? "Capture failed to save.");
-      setCaptureId(body.captureId);
+  const postCapture = useCallback(async (body: Record<string, unknown>): Promise<string> => {
+    const res = await fetch("/api/capture", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json()) as { captureId?: string; error?: string };
+    if (!res.ok || !json.captureId) throw new Error(json.error ?? "Capture failed to save.");
+    return json.captureId;
+  }, []);
+
+  /** Park a capture the network refused, and say where it went. */
+  const parkOffline = async (item: { source: string; text?: string; audio?: Blob }) => {
+    const outcome = await queueCapture({
+      source: item.source,
+      text: item.text,
+      audio: item.audio,
+      audioType: item.audio?.type,
+    });
+    setProblem(null);
+    setOfflineNote(
+      outcome === "stored"
+        ? "Saved offline. Will send when back online."
+        : "Saved offline in this tab only. Keep it open until you are back online.",
+    );
+  };
+
+  const sendAudio = async (blob: Blob) => {
+    const source = isPhone() ? "phone_voice" : "desktop_voice";
+    try {
+      const path = await uploadAudio(blob);
+      const id = await postCapture({ audioPath: path, source });
+      setCaptureId(id);
       setRow({ status: "transcribing", transcript: null, cleaned_text: null, result: null, error: null });
     } catch (err) {
       setPhase("idle");
+      if (isNetworkError(err)) {
+        await parkOffline({ source, audio: blob });
+        return;
+      }
       setProblem(err instanceof Error ? err.message : "Capture failed to save. Try again.");
     }
   };
@@ -138,23 +184,69 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   const sendText = async () => {
     const value = text.trim();
     if (!value) return;
+    const source = isPhone() ? "phone_text" : "desktop_text";
     setPhase("working");
     setRow({ status: "filing", transcript: value, cleaned_text: value, result: null, error: null });
     try {
-      const res = await fetch("/api/capture", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: value, source: isPhone() ? "phone_text" : "desktop_text" }),
-      });
-      const body = (await res.json()) as { captureId?: string; error?: string };
-      if (!res.ok || !body.captureId) throw new Error(body.error ?? "Capture failed to save.");
+      const id = await postCapture({ text: value, source });
       setText("");
-      setCaptureId(body.captureId);
+      setCaptureId(id);
     } catch (err) {
       setPhase("idle");
+      if (isNetworkError(err)) {
+        setText("");
+        setRow(null);
+        await parkOffline({ source, text: value });
+        return;
+      }
       setProblem(err instanceof Error ? err.message : "Capture failed to save. Try again.");
     }
   };
+
+  // ---- offline queue -------------------------------------------------------
+
+  /**
+   * Replay whatever the network ate, on mount and whenever the browser says it
+   * is back. A capture the server rejects on its merits is dropped with a note
+   * rather than retried forever.
+   */
+  const flushQueue = useCallback(async () => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    const items = await listQueued();
+    if (!items.length) return;
+
+    let sent = 0;
+    let rejected: string | null = null;
+    for (const item of items) {
+      try {
+        if (item.audio) {
+          const path = await uploadAudio(item.audio);
+          await postCapture({ audioPath: path, source: item.source });
+        } else if (item.text) {
+          await postCapture({ text: item.text, source: item.source });
+        } else {
+          await removeQueued(item.id);
+          continue;
+        }
+        await removeQueued(item.id);
+        sent += 1;
+      } catch (err) {
+        if (isNetworkError(err)) break; // still offline: leave the rest queued
+        rejected = err instanceof Error ? err.message : "Capture failed to save.";
+        await removeQueued(item.id);
+      }
+    }
+
+    if (sent) setOfflineNote(`${sent} offline ${sent === 1 ? "capture" : "captures"} sent.`);
+    if (rejected) setProblem(`An offline capture could not be filed: ${rejected}`);
+  }, [postCapture, uploadAudio]);
+
+  useEffect(() => {
+    void flushQueue();
+    const onOnline = () => void flushQueue();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [flushQueue]);
 
   // ---- polling -------------------------------------------------------------
 
@@ -228,6 +320,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     setRow(null);
     setMeta({});
     setProblem(null);
+    setOfflineNote(null);
     setElapsed(0);
   };
 
@@ -332,6 +425,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   return (
     <div className="flex min-h-[64vh] flex-col">
       {problem ? <p className="mb-4 text-[13px] text-danger">{problem}</p> : null}
+      {offlineNote ? <p className="mb-4 text-[13px] text-ink-2">{offlineNote}</p> : null}
 
       {mode === "text" ? (
         <div className="flex flex-1 flex-col gap-3">

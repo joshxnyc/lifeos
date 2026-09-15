@@ -2,7 +2,7 @@ import Link from "next/link";
 import { fromZonedTime } from "date-fns-tz";
 import { createClient, currentUserId } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
-import { addDays, localDate, localDayOfWeek, localTime } from "@/lib/time";
+import { addDays, localDate, localDayOfWeek, localTime, mondayOf } from "@/lib/time";
 import { computeStreaks } from "@/lib/domain/streaks";
 import { formatLongDate } from "@/components/tasks/format";
 import { TaskList } from "@/components/tasks/task-list";
@@ -27,7 +27,15 @@ import type {
 } from "@/lib/types";
 import type { TaskView } from "@/components/tasks/types";
 
-export default async function TodayPage() {
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = (await searchParams) ?? {};
+  const justFinishedReview = params.review === "done";
   const supabase = await createClient();
   const userId = await currentUserId();
   const settings = await getSettings(supabase, userId ?? "");
@@ -50,6 +58,7 @@ export default async function TodayPage() {
     { data: routineRows },
     { data: routineLogRows },
     { data: upcomingRows },
+    { data: reviewRow },
   ] = await Promise.all([
     loadTodayTasks(supabase, today),
     loadQuickAddContext(supabase),
@@ -87,7 +96,18 @@ export default async function TodayPage() {
       .lte("due_date", addDays(today, 7))
       .order("due_date", { ascending: true })
       .limit(60),
+    supabase
+      .from("weekly_reviews")
+      .select("status")
+      .eq("week_start", mondayOf(today))
+      .maybeSingle(),
   ]);
+
+  // Canvas 2c: once the week's review is done, the date line says so and points
+  // at the next one instead of leaving the prompt hanging around.
+  const reviewDone =
+    justFinishedReview || (reviewRow as { status?: string } | null)?.status === "done";
+  const reviewNext = `${WEEKDAYS[settings.weekly_review_day] ?? "Sunday"} ${settings.weekly_review_time.slice(0, 5)}`;
 
   const domainById = new Map(domains.map((d) => [d.id, d]));
   const groups = groupToday(todayTasks, today);
@@ -193,6 +213,9 @@ export default async function TodayPage() {
       <div className="min-w-0 flex-1">
         <header className="pt-6">
           <h1 className="display-title">{formatLongDate(today)}</h1>
+          {reviewDone ? (
+            <p className="mt-1 text-[13px] text-ink-2">Review done · next {reviewNext}</p>
+          ) : null}
           {queueCount || needsReauth.length > 0 ? (
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               {queueCount ? (

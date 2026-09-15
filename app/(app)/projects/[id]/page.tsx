@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { createClient, currentUserId } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { localDate } from "@/lib/time";
-import { cn } from "@/lib/utils";
+import { cn, safeHttpUrl } from "@/lib/utils";
 import { DomainChip, DOMAIN_COLOR_CLASS, NotionGlyph } from "@/components/ui/domain";
 import { TaskList } from "@/components/tasks/task-list";
 import { QuickAdd } from "@/components/tasks/quick-add";
@@ -55,16 +55,21 @@ export default async function ProjectPage({
   const project = projectRow as (Project & { domains: Pick<Domain, "id" | "slug" | "name"> | null }) | null;
   if (!project) notFound();
 
-  const [{ domains, projects, people }, { data: taskRows }] = await Promise.all([
-    loadQuickAddContext(supabase),
-    supabase
-      .from("tasks")
-      .select(TASK_SELECT)
-      .eq("project_id", id)
-      .order("status")
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(300),
-  ]);
+  const [{ domains, projects, people }, { data: taskRows }, { count: noteCount }] =
+    await Promise.all([
+      loadQuickAddContext(supabase),
+      supabase
+        .from("tasks")
+        .select(TASK_SELECT)
+        .eq("project_id", id)
+        .order("status")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .limit(300),
+      supabase
+        .from("notes")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", id),
+    ]);
 
   const tasks = toTaskViews(taskRows);
   const open = tasks.filter((t) => t.status === "open");
@@ -75,15 +80,26 @@ export default async function ProjectPage({
 
   const targetDelta = project.target_date ? daysBetween(today, project.target_date) : null;
 
+  // Canvas 1g: each tab carries its count. Sources are whatever the project's
+  // tasks came from, so the number is already in hand — no extra query.
+  const sourceCount = new Set(
+    tasks.map((t) => t.source_item_id).filter((v): v is string => Boolean(v)),
+  ).size;
+  const tabCounts: Partial<Record<Tab, number>> = {
+    tasks: open.length,
+    notes: noteCount ?? 0,
+    sources: sourceCount,
+  };
+
   return (
     <>
       <header className="pt-6">
-        {project.notion_url ? (
+        {safeHttpUrl(project.notion_url) ? (
           <div className="flex justify-end">
             <a
-              href={project.notion_url}
+              href={safeHttpUrl(project.notion_url) ?? undefined}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="inline-flex min-h-11 items-center text-[15px] text-accent"
             >
               Open in Notion ↗
@@ -170,6 +186,9 @@ export default async function ProjectPage({
             )}
           >
             {t.label}
+            {tabCounts[t.key] === undefined ? null : (
+              <span className="tabular ml-1.5 text-ink-2">· {tabCounts[t.key]}</span>
+            )}
           </Link>
         ))}
       </nav>

@@ -98,6 +98,8 @@ export async function undoRoutineLog(routineId: string, date: string): Promise<v
     .eq("routine_id", input.routineId)
     .eq("date", input.date);
   if (error) throw new Error(`undoRoutineLog: ${error.message}`);
+
+  await restoreRoutinePushes(supabase, userId, input.routineId, input.date);
   revalidate(input.routineId);
 }
 
@@ -130,7 +132,7 @@ export async function createRoutine(input: RoutineInput): Promise<string> {
     .single();
   if (error) throw new Error(`createRoutine: ${error.message}`);
 
-  await syncRoutineCalendar(data.id as string);
+  await syncRoutineCalendar(data.id as string, userId);
   revalidate();
   return data.id as string;
 }
@@ -157,15 +159,15 @@ export async function updateRoutine(routineId: string, input: RoutineInput): Pro
     .eq("user_id", userId)
     .eq("id", id);
   if (error) throw new Error(`updateRoutine: ${error.message}`);
-  await syncRoutineCalendar(id);
+  await syncRoutineCalendar(id, userId);
   revalidate(id);
 }
 
 /** Keeps the recurring calendar event in step (SPEC §6.1b). Best-effort. */
-async function syncRoutineCalendar(routineId: string): Promise<void> {
+async function syncRoutineCalendar(routineId: string, userId: string): Promise<void> {
   try {
     const { syncRoutineCalendarEvent } = await import("@/lib/integrations/google/calendar-write");
-    await syncRoutineCalendarEvent(routineId);
+    await syncRoutineCalendarEvent(routineId, userId);
   } catch {
     // a calendar failure must never fail the routine mutation
   }
@@ -180,7 +182,7 @@ export async function deleteRoutine(routineId: string): Promise<void> {
   // Remove the app-created recurring event first — after the row is gone the
   // event id is unreachable.
   await supabase.from("routines").update({ write_to_calendar: false }).eq("user_id", userId).eq("id", id);
-  await syncRoutineCalendar(id);
+  await syncRoutineCalendar(id, userId);
 
   const { error } = await supabase.from("routines").delete().eq("user_id", userId).eq("id", id);
   if (error) throw new Error(`deleteRoutine: ${error.message}`);
@@ -218,7 +220,7 @@ export async function toggleRoutineActive(routineId: string, active: boolean): P
       .in("kind", ["routine_reminder", "routine_missed"])
       .filter("payload->>routine_id", "eq", id);
   }
-  await syncRoutineCalendar(id); // deactivating removes the recurring event
+  await syncRoutineCalendar(id, userId); // deactivating removes the recurring event
   revalidate(id);
 }
 
@@ -227,15 +229,25 @@ export async function toggleRoutineActive(routineId: string, active: boolean): P
  * local day. `scheduled_for` is a timestamptz, so the local day is compared as
  * a UTC half-open range rather than with a ::date cast PostgREST can't express.
  */
+async function localDayRange(
+  supabase: SupabaseClient,
+  userId: string,
+  date: string,
+): Promise<{ dayStart: string; dayEnd: string }> {
+  const { timezone } = await getSettings(supabase, userId);
+  return {
+    dayStart: fromZonedTime(`${date}T00:00:00`, timezone).toISOString(),
+    dayEnd: fromZonedTime(`${addDays(date, 1)}T00:00:00`, timezone).toISOString(),
+  };
+}
+
 async function cancelRoutinePushes(
   supabase: SupabaseClient,
   userId: string,
   routineId: string,
   date: string,
 ): Promise<void> {
-  const { timezone } = await getSettings(supabase, userId);
-  const dayStart = fromZonedTime(`${date}T00:00:00`, timezone).toISOString();
-  const dayEnd = fromZonedTime(`${addDays(date, 1)}T00:00:00`, timezone).toISOString();
+  const { dayStart, dayEnd } = await localDayRange(supabase, userId, date);
 
   await supabase
     .from("notifications")
@@ -245,5 +257,33 @@ async function cancelRoutinePushes(
     .in("kind", ["routine_reminder", "routine_missed"])
     .gte("scheduled_for", dayStart)
     .lt("scheduled_for", dayEnd)
+    .filter("payload->>routine_id", "eq", routineId);
+}
+
+/**
+ * The mirror of cancelRoutinePushes: undoing a log puts the day's reminder and
+ * missed nudge back on the schedule, but only the ones still in the future.
+ * A push whose moment has passed stays cancelled — firing it now would buzz
+ * about a time that is already gone.
+ */
+async function restoreRoutinePushes(
+  supabase: SupabaseClient,
+  userId: string,
+  routineId: string,
+  date: string,
+): Promise<void> {
+  const { dayStart, dayEnd } = await localDayRange(supabase, userId, date);
+  const nowIso = new Date().toISOString();
+  if (nowIso >= dayEnd) return; // the whole day is behind us
+
+  await supabase
+    .from("notifications")
+    .update({ status: "scheduled" })
+    .eq("user_id", userId)
+    .eq("status", "cancelled")
+    .in("kind", ["routine_reminder", "routine_missed"])
+    .gte("scheduled_for", dayStart)
+    .lt("scheduled_for", dayEnd)
+    .gt("scheduled_for", nowIso)
     .filter("payload->>routine_id", "eq", routineId);
 }

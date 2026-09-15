@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { serverEnv } from "@/lib/env";
 import { getJsonSetting } from "@/lib/integrations/settings-json";
+import { toAccountSummary } from "@/lib/integrations/accounts";
 import { getNotionConfig } from "@/lib/integrations/notion/config";
 import { googleConfigured } from "@/lib/integrations/google/client";
 import { notionConfigured } from "@/lib/integrations/notion/client";
@@ -63,6 +64,8 @@ export default async function SettingsPage({
   ]);
 
   const domains = (domainRows ?? []) as Domain[];
+  // Full rows: read here and by the server sections only. Client components
+  // (NotionSection) get toAccountSummary(), never the tokens or sync_state.
   const accounts = (accountRows ?? []) as ConnectedAccount[];
   const googleAccounts = accounts.filter((a) => a.provider === "google");
   const notionAccount = accounts.find((a) => a.provider === "notion") ?? null;
@@ -95,7 +98,7 @@ export default async function SettingsPage({
 
       <NotionSection
         configured={notionConfigured()}
-        account={notionAccount}
+        account={notionAccount ? toAccountSummary(notionAccount) : null}
         config={notionConfig}
       />
 
@@ -123,7 +126,7 @@ export default async function SettingsPage({
 
       <DataSection />
 
-      <AppearanceSection theme={settings.theme} />
+      <AppearanceSection theme={settings.theme} timezone={settings.timezone} />
     </>
   );
 }

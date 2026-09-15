@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Mono, Panel, Row, SettingsSection, selectClass } from "@/components/settings/ui";
 import type { NotionConfig, NotionDatabaseConfig } from "@/lib/integrations/notion/config";
 import type { NotionDatabaseInfo } from "@/lib/integrations/notion/client";
-import type { ConnectedAccount } from "@/lib/types";
+import type { ConnectedAccountSummary } from "@/lib/types";
 
 /**
  * Notion (Tarifa), read-only mirror (SPEC §6.2). The app can only see what
@@ -19,7 +19,7 @@ export function NotionSection({
   config,
 }: {
   configured: boolean;
-  account: ConnectedAccount | null;
+  account: ConnectedAccountSummary | null;
   config: NotionConfig;
 }) {
   const [databases, setDatabases] = useState<NotionDatabaseInfo[] | null>(null);

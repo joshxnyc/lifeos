@@ -7,7 +7,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { Check, CalendarClock, ExternalLink, Pencil } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, safeHttpUrl } from "@/lib/utils";
 import { PersonAvatar, DOMAIN_EDGE_CLASS, NotionGlyph } from "@/components/ui/domain";
 import { completeTask, reopenTask } from "@/app/(app)/tasks/actions";
 import { toast } from "@/components/tasks/toast";
@@ -39,6 +39,8 @@ export function TaskRow({
 
   const done = task.status === "done";
   const swipeable = !task.is_mirror && !done;
+  // Mirror links come from Notion; anything not http(s) renders as plain text.
+  const mirrorUrl = safeHttpUrl(task.external_url);
 
   function runComplete() {
     if (!swipeable || completing) return;
@@ -160,16 +162,23 @@ export function TaskRow({
 
         <div className="min-w-0 flex-1 py-1.5">
           {task.is_mirror ? (
-            <a
-              href={task.external_url ?? undefined}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 text-[15px] text-ink"
-            >
-              <span className="min-w-0 break-words">{task.title}</span>
-              <NotionGlyph />
-              <ExternalLink size={13} className="shrink-0 text-ink-3" />
-            </a>
+            mirrorUrl ? (
+              <a
+                href={mirrorUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[15px] text-ink"
+              >
+                <span className="min-w-0 break-words">{task.title}</span>
+                <NotionGlyph />
+                <ExternalLink size={13} className="shrink-0 text-ink-3" />
+              </a>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[15px] text-ink">
+                <span className="min-w-0 break-words">{task.title}</span>
+                <NotionGlyph />
+              </span>
+            )
           ) : (
             <button
               type="button"

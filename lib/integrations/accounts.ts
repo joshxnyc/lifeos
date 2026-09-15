@@ -1,9 +1,25 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enqueueNotification } from "@/lib/notify";
-import type { ConnectedAccount, Provider } from "@/lib/types";
+import type { ConnectedAccount, ConnectedAccountSummary, Provider } from "@/lib/types";
 
 /** Shared connected_accounts helpers used by every adapter and sync job. */
+
+/** Projection for anything that ends up in the UI: no tokens, no sync_state. */
+export function toAccountSummary(account: ConnectedAccount): ConnectedAccountSummary {
+  return {
+    id: account.id,
+    provider: account.provider,
+    label: account.label,
+    external_identity: account.external_identity,
+    status: account.status,
+    default_domain_id: account.default_domain_id,
+    read_calendar_ids: account.read_calendar_ids,
+    writable_calendar_id: account.writable_calendar_id,
+    last_synced_at: account.last_synced_at,
+    last_error: account.last_error,
+  };
+}
 
 export async function listAccounts(
   supabase: SupabaseClient,

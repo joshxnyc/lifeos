@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await blockTimeForTask(parsed.data.taskId);
+    const result = await blockTimeForTask(parsed.data.taskId, user.id);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof NoWritableCalendarError) {

@@ -53,6 +53,7 @@ export default async function ReviewStepPage({
   const { data: domainRows } = await supabase.from("domains").select("id, name, slug").order("sort_order");
   const domains = (domainRows ?? []) as Pick<Domain, "id" | "name" | "slug">[];
   const domainName = new Map(domains.map((d) => [d.id, d.name]));
+  const domainSlug = new Map(domains.map((d) => [d.id, d.slug]));
 
   return (
     <div className="pb-16">
@@ -151,6 +152,7 @@ export default async function ReviewStepPage({
       title: t.title,
       due_date: t.due_date,
       domain_name: domainName.get(t.domain_id) ?? null,
+      domain_slug: domainSlug.get(t.domain_id) ?? null,
       project_name: t.project_id ? (projectName.get(t.project_id) ?? null) : null,
       person_name: t.person_id ? (personName.get(t.person_id) ?? null) : null,
       source_title: t.source_item_id ? (sourceTitle.get(t.source_item_id) ?? null) : null,

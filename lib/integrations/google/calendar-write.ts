@@ -17,6 +17,10 @@ import type { CalendarEvent, ConnectedAccount, Routine, Task } from "@/lib/types
  *   2. The app never modifies an event it did not create — every patch and
  *      delete is gated on calendar_events.created_by_app = true.
  *
+ * Everything here runs on the service-role client, which bypasses RLS, so
+ * every entry point takes the id of the caller it is acting for and proves the
+ * task or routine belongs to them before a single Google call is made.
+ *
  * Completing a task appends " ✓" to the event title; it never deletes the
  * event, so the calendar stays an honest record of the day.
  */
@@ -61,14 +65,15 @@ async function pickWritableAccount(
 /** "Block time" on a task (SPEC §6.1 calendar write, use (a)). */
 export async function blockTimeForTask(
   taskId: string,
+  callerUserId: string,
 ): Promise<{ calendarEventId: string; startsAt: string; htmlLink: string | null }> {
   const { supabase, userId, timezone } = await ctx();
-  const task = await loadTask(supabase, taskId);
+  const task = await loadTask(supabase, taskId, callerUserId);
 
   if (task.calendar_event_id) {
     const existing = await loadEventRow(supabase, task.calendar_event_id);
     if (existing) {
-      await syncTaskCalendarEvent(taskId);
+      await syncTaskCalendarEvent(taskId, callerUserId);
       return {
         calendarEventId: existing.id,
         startsAt: existing.starts_at,
@@ -132,9 +137,9 @@ export async function blockTimeForTask(
  * Keep an app-created block in step with its task. A1 calls this after any
  * reschedule or completion. Safe to call for tasks with no block.
  */
-export async function syncTaskCalendarEvent(taskId: string): Promise<void> {
+export async function syncTaskCalendarEvent(taskId: string, callerUserId: string): Promise<void> {
   const { supabase, timezone } = await ctx();
-  const task = await loadTask(supabase, taskId);
+  const task = await loadTask(supabase, taskId, callerUserId);
   if (!task.calendar_event_id) return;
 
   const row = await loadEventRow(supabase, task.calendar_event_id);
@@ -145,7 +150,7 @@ export async function syncTaskCalendarEvent(taskId: string): Promise<void> {
   if (!row.created_by_app) return; // never touch what we did not create
 
   if (task.status === "dropped") {
-    await removeTaskCalendarEvent(taskId);
+    await removeTaskCalendarEvent(taskId, callerUserId);
     return;
   }
 
@@ -197,14 +202,16 @@ export async function syncTaskCalendarEvent(taskId: string): Promise<void> {
  * Deleting (or dropping) a task removes the app-created event. Call this
  * BEFORE deleting the task row — it reads the task to find the event.
  */
-export async function removeTaskCalendarEvent(taskId: string): Promise<void> {
+export async function removeTaskCalendarEvent(taskId: string, callerUserId: string): Promise<void> {
   const { supabase } = await ctx();
   const { data: task } = await supabase
     .from("tasks")
-    .select("id, calendar_event_id")
+    .select("id, user_id, calendar_event_id")
     .eq("id", taskId)
     .maybeSingle();
-  const eventId = (task?.calendar_event_id as string | null) ?? null;
+  if (!task) return;
+  assertOwner(task.user_id as string, callerUserId, `task ${taskId}`);
+  const eventId = (task.calendar_event_id as string | null) ?? null;
   if (!eventId) return;
 
   const row = await loadEventRow(supabase, eventId);
@@ -231,34 +238,40 @@ export async function removeTaskCalendarEvent(taskId: string): Promise<void> {
  * Routines with write_to_calendar get one recurring event (SPEC §6.1 use (b)).
  * Created once; routines.calendar_event_external_id records it.
  */
-export async function syncRoutineCalendarEvent(routineId: string): Promise<void> {
+export async function syncRoutineCalendarEvent(routineId: string, callerUserId: string): Promise<void> {
   const { supabase, userId, timezone } = await ctx();
   const { data } = await supabase.from("routines").select("*").eq("id", routineId).maybeSingle();
   const routine = data as Routine | null;
   if (!routine) return;
+  assertOwner(routine.user_id, callerUserId, `routine ${routineId}`);
 
-  const account = await pickWritableAccount(supabase, userId, routine.domain_id);
-  const auth = await getGoogleClientForAccount(supabase, account);
-  const cal = google.calendar({ version: "v3", auth });
-  const calendarId = account.writable_calendar_id as string;
+  // The event lives where it was created. Accounts and default domains change,
+  // so the account pickWritableAccount would choose today is not necessarily
+  // the one holding this event — patching or deleting against it would leave
+  // the real event orphaned on the old calendar. Only a fresh create picks.
+  const existing = await loadRoutineEventRow(supabase, routine.id);
+  const existingAccount = existing ? await accountFor(supabase, existing.account_id) : null;
 
   // Turned off (or deactivated): remove the recurring event we made.
   if (!routine.write_to_calendar || !routine.active) {
-    if (routine.calendar_event_external_id) {
+    const eventId = routine.calendar_event_external_id ?? existing?.external_id ?? null;
+    if (!eventId && !existing) return;
+
+    const account =
+      existingAccount ?? (await pickWritableAccountOrNull(supabase, userId, routine.domain_id));
+    const calendarId = existing?.calendar_id ?? account?.writable_calendar_id ?? null;
+
+    if (eventId && account && calendarId) {
       try {
-        await cal.events.delete({ calendarId, eventId: routine.calendar_event_external_id });
+        const auth = await getGoogleClientForAccount(supabase, account);
+        await google.calendar({ version: "v3", auth }).events.delete({ calendarId, eventId });
       } catch (err) {
         const status = errorStatus(err);
         if (status !== 404 && status !== 410) throw err;
       }
-      await supabase
-        .from("calendar_events")
-        .delete()
-        .eq("account_id", account.id)
-        .eq("calendar_id", calendarId)
-        .eq("external_id", routine.calendar_event_external_id);
-      await supabase.from("routines").update({ calendar_event_external_id: null }).eq("id", routine.id);
     }
+    if (existing) await supabase.from("calendar_events").delete().eq("id", existing.id);
+    await supabase.from("routines").update({ calendar_event_external_id: null }).eq("id", routine.id);
     return;
   }
 
@@ -280,13 +293,27 @@ export async function syncRoutineCalendarEvent(routineId: string): Promise<void>
     extendedProperties: { private: { lifeos_routine_id: routine.id } },
   };
 
-  if (routine.calendar_event_external_id) {
+  const existingEventId = routine.calendar_event_external_id ?? existing?.external_id ?? null;
+  const existingCalendarId = existing?.calendar_id ?? existingAccount?.writable_calendar_id ?? null;
+
+  if (existingEventId && existingAccount && existingCalendarId) {
     try {
-      await cal.events.patch({
-        calendarId,
-        eventId: routine.calendar_event_external_id,
+      const auth = await getGoogleClientForAccount(supabase, existingAccount);
+      await google.calendar({ version: "v3", auth }).events.patch({
+        calendarId: existingCalendarId,
+        eventId: existingEventId,
         requestBody,
       });
+      if (existing) {
+        await supabase
+          .from("calendar_events")
+          .update({
+            title: requestBody.summary ?? routine.name,
+            starts_at: start.toISOString(),
+            ends_at: end.toISOString(),
+          })
+          .eq("id", existing.id);
+      }
       return;
     } catch (err) {
       const status = errorStatus(err);
@@ -295,8 +322,17 @@ export async function syncRoutineCalendarEvent(routineId: string): Promise<void>
     }
   }
 
+  // Nothing to patch (or the event is gone): create, and only now choose where.
+  const account = await pickWritableAccount(supabase, userId, routine.domain_id);
+  const auth = await getGoogleClientForAccount(supabase, account);
+  const cal = google.calendar({ version: "v3", auth });
+  const calendarId = account.writable_calendar_id as string;
+
   const { data: created } = await cal.events.insert({ calendarId, requestBody });
   if (!created?.id) return;
+
+  // Drop the stale archive row so the recreated event is not duplicated.
+  if (existing) await supabase.from("calendar_events").delete().eq("id", existing.id);
 
   await supabase
     .from("routines")
@@ -444,15 +480,54 @@ function appUrl(): string {
 // row helpers
 // ---------------------------------------------------------------------------
 
-async function loadTask(supabase: SupabaseClient, taskId: string): Promise<Task> {
+async function loadTask(
+  supabase: SupabaseClient,
+  taskId: string,
+  callerUserId: string,
+): Promise<Task> {
   const { data, error } = await supabase.from("tasks").select("*").eq("id", taskId).single();
   if (error || !data) throw new Error(`task ${taskId} not found`);
-  return data as Task;
+  const task = data as Task;
+  assertOwner(task.user_id, callerUserId, `task ${taskId}`);
+  return task;
+}
+
+/** RLS is bypassed here, so ownership is checked in code instead. */
+function assertOwner(ownerId: string, callerUserId: string, what: string): void {
+  if (!callerUserId || ownerId !== callerUserId) throw new Error(`${what} does not belong to this user`);
 }
 
 async function loadEventRow(supabase: SupabaseClient, id: string): Promise<CalendarEvent | null> {
   const { data } = await supabase.from("calendar_events").select("*").eq("id", id).maybeSingle();
   return (data as CalendarEvent | null) ?? null;
+}
+
+/** The app-created archive row for a routine's recurring event, if any. */
+async function loadRoutineEventRow(
+  supabase: SupabaseClient,
+  routineId: string,
+): Promise<CalendarEvent | null> {
+  const { data } = await supabase
+    .from("calendar_events")
+    .select("*")
+    .eq("routine_id", routineId)
+    .eq("created_by_app", true)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  return ((data as CalendarEvent[] | null) ?? [])[0] ?? null;
+}
+
+/** pickWritableAccount, but a missing calendar is not fatal (cleanup paths). */
+async function pickWritableAccountOrNull(
+  supabase: SupabaseClient,
+  userId: string,
+  domainId: string | null,
+): Promise<ConnectedAccount | null> {
+  try {
+    return await pickWritableAccount(supabase, userId, domainId);
+  } catch {
+    return null;
+  }
 }
 
 async function accountFor(

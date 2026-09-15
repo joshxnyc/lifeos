@@ -31,20 +31,41 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
     {},
   );
 
-  const { data } = await supabase
+  const dueBefore = now.toISOString();
+  const ROUTINE_KINDS = ["routine_reminder", "routine_missed"];
+
+  // During quiet hours only the routine kinds can do anything (they get
+  // cancelled); everything else is held until quiet hours end. Loading those
+  // held rows would let them fill the batch and starve the routine rows they
+  // sit in front of, so they are counted, not fetched.
+  let query = supabase
     .from("notifications")
     .select("*")
     .eq("user_id", userId)
     .eq("status", "scheduled")
-    .lte("scheduled_for", now.toISOString())
+    .lte("scheduled_for", dueBefore)
     .order("scheduled_for", { ascending: true })
     .limit(BATCH);
+  if (quiet) query = query.in("kind", ROUTINE_KINDS);
+
+  const { data } = await query;
 
   const due = (data ?? []) as NotificationRow[];
   let sent = 0;
   let cancelled = 0;
   let failed = 0;
   let held = 0;
+
+  if (quiet) {
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "scheduled")
+      .lte("scheduled_for", dueBefore)
+      .not("kind", "in", `(${ROUTINE_KINDS.join(",")})`);
+    held = count ?? 0;
+  }
 
   const setStatus = async (id: string, patch: Record<string, unknown>) => {
     await supabase.from("notifications").update(patch).eq("id", id);
@@ -86,7 +107,8 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
         continue;
       }
     } else if (quiet) {
-      held += 1;
+      // Already counted above and never fetched during quiet hours; the guard
+      // stays as a backstop in case the query ever widens again.
       continue;
     }
 

@@ -38,6 +38,9 @@ export async function undoCaptureItem(input: z.infer<typeof undoSchema>): Promis
 
   const result = (capture.result ?? { items: [] }) as CaptureResult;
   const item = result.items.find((i) => i.id === itemId && i.type === type);
+  // The id must be one this capture actually filed: without that check an
+  // arbitrary task, note or person id could be deleted through this action.
+  if (!item) return { ok: false, error: "That card is not part of this capture." };
 
   if (type === "task" || type === "reminder") {
     await supabase.from("tasks").delete().eq("id", itemId).eq("origin_id", captureId);

@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash, timingSafeEqual } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env";
@@ -21,7 +22,7 @@ export type JobHandler = (ctx: JobContext) => Promise<Record<string, unknown>>;
 export function jobRoute(jobName: string, handler: JobHandler) {
   return async function POST(req: NextRequest): Promise<NextResponse> {
     const secret = req.headers.get("x-jobs-secret") ?? req.headers.get("authorization")?.replace(/^Bearer /, "");
-    if (!secret || secret !== serverEnv().JOBS_SECRET) {
+    if (!secret || !secretMatches(secret, serverEnv().JOBS_SECRET)) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
@@ -63,6 +64,12 @@ export function jobRoute(jobName: string, handler: JobHandler) {
       return NextResponse.json({ ok: false, error: message }, { status: 500 });
     }
   };
+}
+
+/** Constant-time compare; sha256 first so the buffers are always 32 bytes. */
+function secretMatches(given: string, expected: string): boolean {
+  const digest = (v: string) => createHash("sha256").update(v).digest();
+  return timingSafeEqual(digest(given), digest(expected));
 }
 
 async function maybeAlertRepeatedFailure(supabase: SupabaseClient, jobName: string) {
