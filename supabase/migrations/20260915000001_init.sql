@@ -19,6 +19,10 @@ begin
   return new;
 end $$;
 
+-- array_to_string is only STABLE; generated columns need IMMUTABLE.
+create or replace function public.immutable_join(arr text[])
+returns text language sql immutable as $$ select array_to_string(arr, ' ') $$;
+
 -- ---------------------------------------------------------------------------
 -- 4.1 Structure
 -- ---------------------------------------------------------------------------
@@ -77,7 +81,7 @@ create table public.people (
   tags text[] not null default '{}',
   search_vector tsvector generated always as (
     setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-    setweight(to_tsvector('english', array_to_string(emails, ' ')), 'B') ||
+    setweight(to_tsvector('english', public.immutable_join(emails)), 'B') ||
     setweight(to_tsvector('english', coalesce(company, '') || ' ' || coalesce(role, '') || ' ' || coalesce(relationship, '')), 'B') ||
     setweight(to_tsvector('english', coalesce(notes_md, '')), 'C')
   ) stored

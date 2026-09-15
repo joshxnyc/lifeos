@@ -65,6 +65,27 @@ npx web-push generate-vapid-keys   # → VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
 
 **Phase 0 is buildable once steps 1–5 are done.** Its live-in-it test: app installed on the iPhone home screen and on the Mac, and a test push arrives on the phone.
 
+### 7. After the first deploy: run migrations and point pg_cron at the app
+
+```bash
+# from the repo, with the Supabase CLI linked to the project
+supabase link --project-ref <ref>
+supabase db push          # applies /supabase/migrations
+```
+
+Then in the Supabase SQL editor, tell the cron jobs where the app lives
+(they read this at call time — see `supabase/migrations/20260915000002_cron.sql`):
+
+```sql
+insert into private.app_config (key, value) values
+  ('app_url', 'https://<your-domain>'),
+  ('jobs_secret', '<JOBS_SECRET value>')
+on conflict (key) do update set value = excluded.value;
+```
+
+Finally create your user (Authentication → Add user) — this auto-seeds the
+four domains and default settings via a trigger.
+
 ---
 
 ## Before Phase 3 (Google accounts, archive, extraction)
