@@ -32,7 +32,8 @@ function cspFor(nonce: string): string {
 }
 
 export async function middleware(request: NextRequest) {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  // Middleware runs on the Edge runtime: Web APIs only, no Node Buffer.
+  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
