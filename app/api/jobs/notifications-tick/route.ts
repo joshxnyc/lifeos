@@ -1,5 +1,7 @@
 import { jobRoute } from "@/lib/jobs";
 import { getSettings } from "@/lib/settings";
+import { getJsonSetting } from "@/lib/integrations/settings-json";
+import type { NotificationToggles } from "@/lib/integrations/notification-kinds";
 import { isInQuietHours } from "@/lib/notify";
 import { sendPushToAllDevices } from "@/lib/push";
 import { localDate, localTime, mondayOf } from "@/lib/time";
@@ -21,6 +23,13 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
   const settings = await getSettings(supabase, userId);
   const tz = settings.timezone;
   const quiet = isInQuietHours(localTime(now, tz), settings.quiet_hours);
+  // Per-kind toggles from Settings → Notifications; a missing key means on.
+  const toggles = await getJsonSetting<NotificationToggles>(
+    supabase,
+    userId,
+    "notification_kind_toggles",
+    {},
+  );
 
   const { data } = await supabase
     .from("notifications")
@@ -50,6 +59,12 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
       typeof n.payload?.date === "string"
         ? (n.payload.date as string)
         : localDate(new Date(n.scheduled_for), tz);
+
+    if (toggles[n.kind] === false) {
+      await setStatus(n.id, { status: "cancelled" });
+      cancelled += 1;
+      continue;
+    }
 
     if (n.kind === "routine_reminder" || n.kind === "routine_missed") {
       if (routineId) {

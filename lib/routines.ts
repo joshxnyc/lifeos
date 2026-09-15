@@ -130,6 +130,7 @@ export async function createRoutine(input: RoutineInput): Promise<string> {
     .single();
   if (error) throw new Error(`createRoutine: ${error.message}`);
 
+  await syncRoutineCalendar(data.id as string);
   revalidate();
   return data.id as string;
 }
@@ -156,7 +157,18 @@ export async function updateRoutine(routineId: string, input: RoutineInput): Pro
     .eq("user_id", userId)
     .eq("id", id);
   if (error) throw new Error(`updateRoutine: ${error.message}`);
+  await syncRoutineCalendar(id);
   revalidate(id);
+}
+
+/** Keeps the recurring calendar event in step (SPEC §6.1b). Best-effort. */
+async function syncRoutineCalendar(routineId: string): Promise<void> {
+  try {
+    const { syncRoutineCalendarEvent } = await import("@/lib/integrations/google/calendar-write");
+    await syncRoutineCalendarEvent(routineId);
+  } catch {
+    // a calendar failure must never fail the routine mutation
+  }
 }
 
 /** Deletes the routine and, by cascade, its logs. */
@@ -164,6 +176,11 @@ export async function deleteRoutine(routineId: string): Promise<void> {
   const id = uuid.parse(routineId);
   const supabase = await createClient();
   const userId = await requireUser(supabase);
+
+  // Remove the app-created recurring event first — after the row is gone the
+  // event id is unreachable.
+  await supabase.from("routines").update({ write_to_calendar: false }).eq("user_id", userId).eq("id", id);
+  await syncRoutineCalendar(id);
 
   const { error } = await supabase.from("routines").delete().eq("user_id", userId).eq("id", id);
   if (error) throw new Error(`deleteRoutine: ${error.message}`);
@@ -201,6 +218,7 @@ export async function toggleRoutineActive(routineId: string, active: boolean): P
       .in("kind", ["routine_reminder", "routine_missed"])
       .filter("payload->>routine_id", "eq", id);
   }
+  await syncRoutineCalendar(id); // deactivating removes the recurring event
   revalidate(id);
 }
 

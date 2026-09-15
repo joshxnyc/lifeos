@@ -11,6 +11,10 @@ import { createClient, currentUserId } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { localDate } from "@/lib/time";
 import { nextOccurrence } from "@/lib/domain/recurrence";
+import {
+  removeTaskCalendarEvent,
+  syncTaskCalendarEvent,
+} from "@/lib/integrations/google/calendar-write";
 import type { Project, Task } from "@/lib/types";
 import type {
   ActionResult,
@@ -26,6 +30,18 @@ import type {
 // ---------------------------------------------------------------------------
 
 const uuid = z.string().uuid();
+
+// Keeps an app-created calendar block in step with its task (SPEC §6.1c).
+// Best-effort: a Google hiccup must never fail the task mutation.
+async function syncCalendarBlock(task: Pick<Task, "calendar_event_id">, taskId: string) {
+  if (!task.calendar_event_id) return;
+  try {
+    await syncTaskCalendarEvent(taskId);
+  } catch {
+    // sync-google surfaces persistent calendar failures; ignore here
+  }
+}
+
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date.");
 const timeStr = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Use a HH:MM time.");
 const priority = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
@@ -240,6 +256,7 @@ export async function updateTask(id: string, patch: UpdateTaskInput): Promise<Ac
   if (error) return { ok: false, error: error.message };
 
   await bumpProjects(c, [task.project_id, v.project_id]);
+  await syncCalendarBlock(task, id);
   revalidateTaskViews();
   return { ok: true, id };
 }
@@ -298,6 +315,7 @@ export async function completeTask(id: string): Promise<ActionResult> {
   }
 
   await bumpProjects(c, [task.project_id]);
+  await syncCalendarBlock(task, id); // done → the event title gets a "✓"
   revalidateTaskViews();
   return { ok: true, id };
 }
@@ -371,6 +389,7 @@ export async function rescheduleTask(id: string, input: RescheduleInput): Promis
   if (error) return { ok: false, error: error.message };
 
   await bumpProjects(c, [task.project_id]);
+  await syncCalendarBlock(task, id);
   revalidateTaskViews();
   return { ok: true, id };
 }
@@ -384,6 +403,13 @@ export async function deleteTask(id: string): Promise<ActionResult> {
   if (!task) return { ok: true, id };
   if (task.is_mirror) return { ok: false, error: "Mirrored tasks are deleted in Notion." };
 
+  if (task.calendar_event_id) {
+    try {
+      await removeTaskCalendarEvent(id); // app-created events only (SPEC §6.1)
+    } catch {
+      // never block the delete on a calendar failure
+    }
+  }
   const { error } = await c.supabase.from("tasks").delete().eq("id", id);
   if (error) return { ok: false, error: error.message };
 
