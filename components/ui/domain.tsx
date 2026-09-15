@@ -17,16 +17,46 @@ export const DOMAIN_EDGE_CLASS: Record<DomainSlug, string> = {
   misc: "border-l-domain-misc",
 };
 
+/** Canvas chip: paper-2 fill, 13px ink, a 7px domain dot. No border. */
 export function DomainChip({ slug, name, className }: { slug: DomainSlug; name: string; className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[12px] text-ink-2",
+        "inline-flex items-center gap-1.5 rounded-full bg-paper-2 px-2.5 py-0.5 text-[13px] text-ink",
         className,
       )}
     >
-      <span className={cn("size-1.5 rounded-full", DOMAIN_COLOR_CLASS[slug])} />
+      <span className={cn("size-[7px] shrink-0 rounded-full", DOMAIN_COLOR_CLASS[slug])} />
       {name}
+    </span>
+  );
+}
+
+/** A plain fact chip beside a DomainChip — project, person, a due date. */
+export function MetaChip({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full bg-paper-2 px-2.5 py-0.5 text-[13px] text-ink",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** The mirrored-from-Notion glyph: a 12px outlined "N" (canvas 1a / 1f / 2f). */
+export function NotionGlyph({ className }: { className?: string }) {
+  return (
+    <span
+      aria-label="Mirrored from Notion"
+      className={cn(
+        "inline-flex size-3 shrink-0 items-center justify-center rounded-[2px] border-[1.5px] border-ink-2 text-[8px] font-bold leading-none text-ink-2",
+        className,
+      )}
+    >
+      N
     </span>
   );
 }

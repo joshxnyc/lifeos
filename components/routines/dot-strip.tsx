@@ -8,32 +8,31 @@ const DOT_CLASS: Record<DotStatus, string> = {
   done: "bg-ok",
   skipped: "border border-ink-3 bg-transparent",
   missed: "bg-danger",
-  pending: "border border-ink-2/50 bg-transparent",
-  off: "bg-line",
+  pending: "border border-ink-3 bg-transparent",
+  off: "border border-line bg-transparent",
 };
 
 export function DotStrip({
   days,
   className,
-  size = 4,
+  columns = 14,
 }: {
   days: { date: string; status: DotStatus }[];
   className?: string;
-  size?: number;
+  /** Canvas 1h lays 28 days out as two rows of 14. */
+  columns?: number;
 }) {
-  // 28 dots have to fit a 145px-wide tile at 390px, so they stay small; the
-  // detail screen passes a larger size.
   return (
     <div
-      className={cn("flex items-center gap-[1px] overflow-hidden", className)}
+      className={cn("grid w-full gap-[3px]", className)}
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
       role="img"
       aria-label={`${days.filter((d) => d.status === "done").length} done in the last ${days.length} days`}
     >
       {days.map((d) => (
         <span
           key={d.date}
-          style={{ width: size, height: size }}
-          className={cn("shrink-0 rounded-full", DOT_CLASS[d.status])}
+          className={cn("aspect-square rounded-full", DOT_CLASS[d.status])}
         />
       ))}
     </div>

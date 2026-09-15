@@ -25,8 +25,8 @@ export function RoutinesRow({ routines, date }: { routines: RoutinePillData[]; d
   if (routines.length === 0) return null;
   return (
     <section className="mb-7">
-      <p className="section-label mb-1.5">Routines</p>
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
+      <p className="section-label mb-2.5">Routines</p>
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:px-0">
         {routines.map((r) => (
           <RoutinePill key={r.id} routine={r} date={date} />
         ))}
@@ -89,18 +89,40 @@ function RoutinePill({ routine, date }: { routine: RoutinePillData; date: string
       onClick={onClick}
       aria-label={`${routine.name}${done ? ", done" : ""}. Tap to mark done, hold to skip.`}
       className={cn(
-        "flex h-11 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[14px] select-none",
-        done && "border-ok bg-ok/10 text-ink",
+        "flex h-11 shrink-0 items-center gap-2 rounded-full border py-2 pr-3 pl-2.5 text-[14px] select-none",
+        done && "border-ok text-ink",
         skipped && "border-line text-ink-3",
-        missed && "border-danger text-danger",
+        missed && "border-danger text-ink",
         !done && !skipped && !missed && routine.inGrace && "border-warn text-ink",
         !done && !skipped && !missed && !routine.inGrace && "border-line text-ink",
       )}
     >
-      {done ? <Check size={14} strokeWidth={3} className="text-ok" /> : null}
+      {/* Canvas: a 16px status dot — filled ok with a tick when done,
+          otherwise a hollow ring in the routine's current tone. */}
+      <span
+        aria-hidden
+        className={cn(
+          "flex size-4 shrink-0 items-center justify-center rounded-full",
+          done
+            ? "bg-ok text-paper"
+            : cn(
+                "border-[1.5px]",
+                missed ? "border-danger" : routine.inGrace ? "border-warn" : "border-ink-3",
+              ),
+        )}
+      >
+        {done ? <Check size={10} strokeWidth={3.5} /> : null}
+      </span>
       <span className="max-w-[140px] truncate">{routine.name}</span>
       {routine.streak > 0 ? (
-        <span className="tabular font-display text-[15px] text-ink-2">{routine.streak}</span>
+        <span
+          className={cn(
+            "tabular font-display font-semibold",
+            done ? "text-ok" : missed ? "text-danger" : routine.inGrace ? "text-warn" : "text-ink-2",
+          )}
+        >
+          {routine.streak}
+        </span>
       ) : null}
     </button>
   );

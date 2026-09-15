@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { localDate, localDayOfWeek } from "@/lib/time";
@@ -97,17 +97,17 @@ export default async function RoutinesPage() {
     <>
       <PageHeader
         title="Routines"
-        subtitle={
-          tiles.length > 0
-            ? `${doneToday} of ${tiles.length} logged today`
-            : "Nothing scheduled today"
+        actions={
+          <span className="text-[13px] text-ink-2">
+            {tiles.length > 0
+              ? `${doneToday} of ${tiles.length} done`
+              : "Nothing scheduled today"}
+          </span>
         }
-        actions={<AddRoutineButton domains={domainOptions} />}
       />
 
       {tiles.length > 0 ? (
-        <section className="mb-8">
-          <h2 className="section-label mb-2">Today</h2>
+        <section className="mb-7">
           <div className="grid grid-cols-2 gap-3">
             {tiles.map((t) => (
               <RoutineTile
@@ -131,29 +131,29 @@ export default async function RoutinesPage() {
       ) : null}
 
       <section>
-        <h2 className="section-label mb-1">All routines</h2>
-        <ul className="divide-y divide-line">
+        {/* Canvas 1h: the label carries the add action on its right. */}
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="section-label">All routines</h2>
+          <AddRoutineButton domains={domainOptions} />
+        </div>
+        <ul className="mt-1">
           {routines.map((r) => {
             const domain = r.domain_id ? domainById.get(r.domain_id) : undefined;
             return (
-              <li key={r.id} className="flex items-center gap-2 py-1.5">
+              <li key={r.id} className="flex items-center gap-2 border-b border-line">
                 <Link
                   href={`/routines/${r.id}`}
-                  className="flex min-h-11 min-w-0 flex-1 items-center gap-2 border-l-[3px] pl-2"
+                  className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 border-l-[3px] py-3 pl-2"
                   style={{ borderLeftColor: domain?.color ?? "transparent" }}
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] text-ink">
-                      {r.emoji ? <span className="mr-1.5">{r.emoji}</span> : null}
-                      {r.name}
-                    </span>
-                    <span className="tabular block text-[12px] text-ink-2">
-                      {scheduleLine(r.schedule_days, r.reminder_time)}
-                      {r.reminder_time && r.nudge_enabled ? ` · nudge +${r.grace_minutes}m` : ""}
-                      {!r.active ? " · inactive" : ""}
-                    </span>
+                  <span className="min-w-0 truncate text-[15px] text-ink">
+                    {r.emoji ? <span className="mr-1.5">{r.emoji}</span> : null}
+                    {r.name}
                   </span>
-                  <ChevronRight className="size-4 shrink-0 text-ink-2" aria-hidden />
+                  <span className="tabular shrink-0 text-[13px] text-ink-2">
+                    {scheduleLine(r.schedule_days, r.reminder_time)}
+                    {!r.active ? " · inactive" : ""}
+                  </span>
                 </Link>
                 <ActiveToggle routineId={r.id} active={r.active} name={r.name} />
               </li>

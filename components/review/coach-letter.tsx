@@ -41,7 +41,7 @@ export function CoachLetter({
   if (!read) {
     return (
       <div className="py-10">
-        <p className="font-display text-[22px] leading-snug">
+        <p className="display-lead">
           The read uses this week&apos;s numbers and the last four weeks.
         </p>
         <div className="mt-5">
@@ -59,12 +59,10 @@ export function CoachLetter({
 
   return (
     <div className="mx-auto max-w-[620px] py-6">
-      <p className="font-display text-[22px] font-semibold leading-snug tracking-tight">
-        {firstLine?.replace(/^#+\s*/, "")}
-      </p>
+      <p className="display-lead leading-[1.3]">{firstLine?.replace(/^#+\s*/, "")}</p>
 
       {body ? (
-        <div className="mt-4 space-y-4 text-[17px] leading-[1.7] text-ink">
+        <div className="mt-4 space-y-4 text-[17px] leading-[1.6] text-ink">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -79,10 +77,14 @@ export function CoachLetter({
       ) : null}
 
       {oneChange ? (
-        <div className="mt-6 rounded-card border border-line bg-paper-2 p-4">
+        // Canvas 1q: the one change is boxed in a full-strength ink hairline —
+        // the only place on the screen that gets one.
+        <div className="mt-6 rounded-card border border-ink p-4">
           <p className="section-label">One change for next week</p>
-          <p className="mt-1 text-[17px] leading-snug text-ink">{oneChange}</p>
-          <label className="mt-3 flex min-h-11 items-center gap-2 text-[14px] text-ink-2">
+          <p className="mt-1.5 font-display text-[17px] leading-[1.35] font-medium text-ink">
+            {oneChange}
+          </p>
+          <label className="mt-3 flex min-h-11 items-center gap-2.5 text-[15px] text-ink">
             <input
               type="checkbox"
               checked={checked}
@@ -90,7 +92,7 @@ export function CoachLetter({
                 setChecked(e.target.checked);
                 run(() => setOneChangeAccepted(weekStart, e.target.checked));
               }}
-              className="size-4 accent-[var(--accent)]"
+              className="size-[22px] rounded-[6px] accent-[var(--ink)]"
             />
             I&apos;ll try this
           </label>

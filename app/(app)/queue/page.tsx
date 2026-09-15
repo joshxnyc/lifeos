@@ -87,26 +87,38 @@ export default async function QueuePage() {
     <>
       <PageHeader
         title="Queue"
-        subtitle={`${rows.length} waiting · last sweep ${timeAgo(sweep)}`}
+        actions={
+          <span className="text-[13px] text-ink-2">
+            {rows.length} waiting · swept {timeAgo(sweep)}
+          </span>
+        }
       />
 
-      <div className="space-y-7">
+      <div className="space-y-6">
         {groups.map((group) => {
           const source = group.source;
-          const header = sourceHeader(source);
+          const [kind, ...rest] = sourceHeader(source).split(" · ");
+          // Canvas: "Email · Bernhard Niesner · 2h ago" — 13px, the provider
+          // word in ink, the rest in ink-2.
+          const header = (
+            <>
+              <span className="font-medium text-ink">{kind}</span>
+              {rest.length ? ` · ${rest.join(" · ")}` : null}
+            </>
+          );
           return (
             <section key={group.key}>
               {source ? (
                 <Link
                   href={`/source/${source.id}`}
-                  className="section-label flex min-h-11 items-center hover:text-ink"
+                  className="flex min-h-11 items-center text-[13px] text-ink-2"
                 >
                   {header}
                 </Link>
               ) : (
-                <p className="section-label flex min-h-11 items-center">{header}</p>
+                <p className="flex min-h-11 items-center text-[13px] text-ink-2">{header}</p>
               )}
-              <div className="border-t border-line">
+              <div className="space-y-3">
                 {group.items.map((item) => (
                   <SuggestionCard
                     key={item.id}

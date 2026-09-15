@@ -79,7 +79,7 @@ export function SlippedStep({
   if (!task) {
     return (
       <div className="py-10">
-        <p className="font-display text-[22px] leading-snug">
+        <p className="display-lead">
           {total === 0 ? "Nothing slipped this week." : `${total} decided. Nothing left overdue.`}
         </p>
         <div className="mt-5">
@@ -101,29 +101,54 @@ export function SlippedStep({
         {decided + 1} of {total}
       </p>
 
-      <article className="mt-3 rounded-card border border-line bg-paper-2 p-5">
-        <h2 className="font-display text-[22px] font-semibold leading-snug">{task.title}</h2>
-        <p className="mt-2 text-[13px] text-ink-2">
+      {/* Canvas 1n: one decision card raised off the paper, the overdue count
+          as a danger label, the title in Fraunces, context underneath. */}
+      <article className="mt-3 rounded-card border border-line bg-raise px-[18px] py-[22px] shadow-whisper">
+        {task.days_overdue ? (
+          <p className="section-label text-danger">Overdue {task.days_overdue} days</p>
+        ) : (
+          <p className="section-label">Slipped</p>
+        )}
+        <h2 className="display-lead mt-2">{task.title}</h2>
+        {context ? <p className="mt-3.5 text-[13px] text-ink-2">{context}</p> : null}
+        <p className="mt-1 text-[13px] text-ink-2">
           {task.due_date ? `Due ${task.due_date}` : "No due date"}
-          {task.days_overdue ? ` · ${task.days_overdue} days overdue` : ""}
         </p>
-        {context ? <p className="mt-1 text-[13px] text-ink-2">{context}</p> : null}
       </article>
 
       {error ? <p className="mt-3 text-[13px] text-danger">{error}</p> : null}
 
       {mode === null ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => setMode("reschedule")}>
-            Reschedule
-          </Button>
-          <Button variant="secondary" onClick={() => setMode("drop")}>
-            Drop
-          </Button>
-          <Button variant="secondary" onClick={() => setMode("delegate")}>
-            Delegate
-          </Button>
-        </div>
+        <>
+          <div className="mt-5 flex flex-col gap-2">
+            <Button
+              variant="primary"
+              onClick={() => setMode("reschedule")}
+              className="h-auto w-full rounded-card bg-ink py-3.5 text-[15px] text-paper"
+            >
+              Reschedule
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setMode("drop")}
+                className="h-auto w-full rounded-card py-3.5 text-[15px]"
+              >
+                Drop
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setMode("delegate")}
+                className="h-auto w-full rounded-card py-3.5 text-[15px]"
+              >
+                Delegate
+              </Button>
+            </div>
+          </div>
+          <p className="mt-3.5 text-center text-[13px] text-ink-2">
+            Drop asks for a one-line reason. Delegate asks who.
+          </p>
+        </>
       ) : null}
 
       {mode === "reschedule" ? (

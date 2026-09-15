@@ -111,32 +111,47 @@ export function RoutineTile({
           : `${name}. Tap to mark done, press and hold to skip today.`
       }
       className={cn(
-        "relative flex min-h-[140px] select-none flex-col justify-between overflow-hidden rounded-card border border-l-[3px] border-line bg-paper p-3 text-left transition-[transform,background-color] duration-150 disabled:opacity-60",
-        todayStatus === "done" && "bg-accent-soft/40",
+        // Canvas 1h: a 118px tile whose single hairline border carries the
+        // status — ok when logged, line otherwise. The domain shows as a dot
+        // beside the name, never as a fill.
+        "relative flex min-h-[118px] select-none flex-col justify-between overflow-hidden rounded-card border bg-paper p-3.5 text-left transition-[transform,border-color] duration-150 disabled:opacity-60",
+        todayStatus === "done" ? "border-ok" : "border-line",
         ticking && "scale-[0.98]",
       )}
-      style={domainColor ? { borderLeftColor: domainColor } : undefined}
     >
       <span className="flex items-start justify-between gap-2">
-        <span className="text-[15px] font-medium leading-snug text-ink">
-          {emoji ? <span className="mr-1.5">{emoji}</span> : null}
-          {name}
+        <span className="flex min-w-0 items-center gap-1.5 text-[15px] leading-snug font-medium text-ink">
+          {domainColor ? (
+            <span
+              aria-hidden
+              className="size-[7px] shrink-0 rounded-full"
+              style={{ backgroundColor: domainColor }}
+            />
+          ) : null}
+          <span className="min-w-0">
+            {emoji ? <span className="mr-1.5">{emoji}</span> : null}
+            {name}
+          </span>
         </span>
-        {todayStatus === "done" ? (
-          <Check className="size-[18px] shrink-0 text-ok" aria-hidden />
-        ) : todayStatus === "skipped" ? (
-          <Minus className="size-[18px] shrink-0 text-ink-2" aria-hidden />
-        ) : null}
+        {/* The 20px status ring: filled ok with a tick when done. */}
+        <span
+          aria-hidden
+          className={cn(
+            "flex size-5 shrink-0 items-center justify-center rounded-full",
+            todayStatus === "done"
+              ? "bg-ok text-paper"
+              : "border-[1.5px] border-ink-3 text-ink-2",
+          )}
+        >
+          {todayStatus === "done" ? <Check className="size-3" strokeWidth={3.5} /> : null}
+          {todayStatus === "skipped" ? <Minus className="size-3" strokeWidth={3} /> : null}
+        </span>
       </span>
 
-      <StreakNumber value={streak} />
-
-      <span className="flex flex-col gap-1.5">
+      <span className="flex flex-col gap-2.5">
+        <StreakNumber value={streak} tone={todayStatus === "done" ? "ok" : "ink"} />
         <DotStrip days={days} />
-        <span className="tabular text-[11px] text-ink-2">
-          {Math.round(rate * 100)}% · 28 days
-          {todayStatus === "skipped" ? " · skipped today" : ""}
-        </span>
+        <span className="sr-only">{Math.round(rate * 100)}% over 28 days</span>
         {error ? <span className="text-[11px] text-danger">{error}</span> : null}
       </span>
     </button>

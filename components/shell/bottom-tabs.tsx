@@ -39,8 +39,10 @@ export function BottomTabs() {
       href={href}
       onClick={() => setMoreOpen(false)}
       className={cn(
-        "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 text-[11px]",
-        pathname.startsWith(href) ? "text-accent" : "text-ink-2",
+        // Canvas: the active tab is ink at weight 600, not accent — the
+        // accent is reserved for the capture button and for actions.
+        "flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-[11px]",
+        pathname.startsWith(href) ? "font-semibold text-ink" : "text-ink-2",
       )}
     >
       <Icon size={22} strokeWidth={1.75} />
@@ -56,15 +58,18 @@ export function BottomTabs() {
             className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper p-4 pb-safe shadow-whisper"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-20 grid grid-cols-3 gap-2">
+            {/* Canvas 2b: a grab handle over a plain hairline-separated list,
+                not a grid of tiles. */}
+            <div className="mx-auto mb-1.5 h-1 w-9 rounded-full bg-line" aria-hidden />
+            <div className="mb-20">
               {moreLinks.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
                   onClick={() => setMoreOpen(false)}
-                  className="flex flex-col items-center gap-1.5 rounded-card border border-line bg-paper-2 py-4 text-[13px] text-ink"
+                  className="flex min-h-11 items-center gap-3 border-b border-line py-3.5 text-[15px] text-ink last:border-b-0"
                 >
-                  <Icon size={22} strokeWidth={1.75} className="text-ink-2" />
+                  <Icon size={18} strokeWidth={1.75} className="shrink-0 text-ink-2" />
                   {label}
                 </Link>
               ))}
@@ -72,14 +77,14 @@ export function BottomTabs() {
           </div>
         </div>
       ) : null}
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-paper pb-safe md:hidden">
-        <div className="flex items-center">
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-paper pt-2 pb-safe md:hidden">
+        <div className="flex items-end">
           {tab("/today", "Today", CalendarCheck)}
           {tab("/tasks", "Tasks", ListChecks)}
           <Link
             href="/capture"
             aria-label="Capture"
-            className="relative -top-4 flex size-14 items-center justify-center rounded-full bg-accent text-white shadow-whisper"
+            className="relative -top-[22px] mx-auto flex size-14 items-center justify-center rounded-full bg-accent text-paper shadow-whisper"
           >
             <Mic size={24} />
           </Link>
@@ -87,8 +92,8 @@ export function BottomTabs() {
           <button
             onClick={() => setMoreOpen((v) => !v)}
             className={cn(
-              "flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 text-[11px]",
-              moreOpen ? "text-accent" : "text-ink-2",
+              "flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-[11px]",
+              moreOpen ? "font-semibold text-ink" : "text-ink-2",
             )}
           >
             <MoreHorizontal size={22} strokeWidth={1.75} />

@@ -235,7 +235,7 @@ export function RoutineForm({
         </div>
       </div>
 
-      <Field label="Domain" hint="Optional. Sets the colour edge on the tile.">
+      <Field label="Domain" hint="Optional. Sets the colour dot on the tile.">
         <select
           className={inputClass}
           value={values.domain_id ?? ""}
@@ -291,10 +291,15 @@ export function AddRoutineButton({ domains }: { domains: { id: string; name: str
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="secondary" onClick={() => setOpen(true)}>
+      {/* Canvas 1h: a plain accent action beside the section label. */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-11 items-center gap-1 text-[14px] text-accent"
+      >
         <Plus className="size-4" aria-hidden />
         Add routine
-      </Button>
+      </button>
       {open ? (
         <RoutineSheet title="New routine" onClose={() => setOpen(false)}>
           <RoutineForm domains={domains} onDone={() => setOpen(false)} autoFocusName />
@@ -326,7 +331,7 @@ export function RoutineSheet({
         className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-[16px] border border-line bg-paper p-4 pb-safe shadow-whisper md:rounded-card"
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-[22px] font-semibold tracking-tight">{title}</h2>
+          <h2 className="display-lead">{title}</h2>
           <button
             type="button"
             onClick={onClose}

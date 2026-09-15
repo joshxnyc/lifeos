@@ -17,28 +17,35 @@
   --warn: #b88a2a;
   --danger: #a63d2f;
 
+  /* Surface that sits above `paper` — filed capture cards, the review
+     decision card, the command palette (canvas 1d / 1n / 1o / 2j). */
+  --raise: #fbf9f5;
+
   --domain-personal: #7a8c6e;
   --domain-almedia: #3f5f7a;
   --domain-tarifa: #8a5a3c;
   --domain-misc: #7a6c8a;
 }
 
+/* Dark values are taken from the canvas dark artboards (1b, 1s). */
 .dark {
   --paper: #17150f;
   --paper-2: #221f18;
   --ink: #efe9df;
   --ink-2: #b3aba0;
-  --ink-3: #726b60;
+  --ink-3: #6b655c;
   --line: #302c24;
   --accent: #d4744e;
-  --accent-soft: #3d2a20;
-  --ok: #6a9878;
-  --warn: #cfa24b;
-  --danger: #c05a4b;
+  --accent-soft: #3a2418;
+  --ok: #6a9a78;
+  --warn: #d0a441;
+  --danger: #d2584a;
 
-  --domain-personal: #93a686;
-  --domain-almedia: #5b7d9a;
-  --domain-tarifa: #a97a58;
+  --raise: #221f18;
+
+  --domain-personal: #8fa282;
+  --domain-almedia: #557a99;
+  --domain-tarifa: #a57352;
   --domain-misc: #9587a6;
 }
 
@@ -51,6 +58,7 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-raise: var(--raise);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
@@ -87,22 +95,58 @@ body {
   }
 }
 
-/* Section labels: 11px, uppercase, tracked, ink-2 (never ink-3 — contrast). */
-.section-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-2);
-  font-weight: 500;
-}
+/* These live in @layer components so a Tailwind utility on the same element
+   (text-danger on a section label, say) still wins. */
+@layer components {
+  /* Section labels: 11px, uppercase, tracked, ink-2 (never ink-3 — contrast).
+     Weight 600 per the design canvas. */
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
 
-.font-display {
-  font-family: var(--font-display);
-  font-optical-sizing: auto;
-}
+  .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+  }
 
-.tabular {
-  font-variant-numeric: tabular-nums;
+  /* The three Fraunces sizes the canvas uses, with its exact weight, tracking
+     and leading: screen titles (28), lead lines (22), display numbers (34). */
+  .display-title {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    text-wrap: pretty;
+  }
+
+  .display-lead {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.25;
+    text-wrap: pretty;
+  }
+
+  .display-number {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-variant-numeric: tabular-nums;
+    font-size: 34px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* iOS standalone: respect safe areas. */

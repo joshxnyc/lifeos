@@ -1,5 +1,8 @@
 import "server-only";
+import { fromZonedTime } from "date-fns-tz";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSettings } from "@/lib/settings";
+import { addDays, localDate } from "@/lib/time";
 import type { NotificationKind } from "@/lib/types";
 
 export interface EnqueueOptions {
@@ -25,14 +28,16 @@ export async function enqueueNotification(
   opts: EnqueueOptions,
 ): Promise<boolean> {
   if (opts.dedupeDaily) {
-    const dayStart = new Date(opts.scheduledFor);
-    dayStart.setUTCHours(0, 0, 0, 0);
+    // "Once a day" means Joshua's day, not UTC's: a 21:00 New York digest is
+    // already tomorrow in UTC, which would let a second one through.
+    const { dayStart, dayEnd } = await localDayBounds(supabase, userId, opts.scheduledFor);
     const { data: existing } = await supabase
       .from("notifications")
       .select("id")
       .eq("user_id", userId)
       .eq("kind", opts.kind)
-      .gte("scheduled_for", dayStart.toISOString())
+      .gte("scheduled_for", dayStart)
+      .lt("scheduled_for", dayEnd)
       .filter("payload->>routine_id", "eq", String(opts.payload?.routine_id ?? ""))
       .limit(1);
     if (existing?.length) return false;
@@ -52,6 +57,34 @@ export async function enqueueNotification(
     throw new Error(`enqueueNotification: ${error.message}`);
   }
   return true;
+}
+
+/** The half-open UTC range covering the local calendar day `at` falls in. */
+async function localDayBounds(
+  supabase: SupabaseClient,
+  userId: string,
+  at: Date,
+): Promise<{ dayStart: string; dayEnd: string }> {
+  let timezone = "UTC";
+  try {
+    timezone = (await getSettings(supabase, userId)).timezone || "UTC";
+  } catch {
+    // settings unreadable: fall back to UTC days rather than losing the dedupe
+  }
+  try {
+    const day = localDate(at, timezone);
+    return {
+      dayStart: fromZonedTime(`${day}T00:00:00`, timezone).toISOString(),
+      dayEnd: fromZonedTime(`${addDays(day, 1)}T00:00:00`, timezone).toISOString(),
+    };
+  } catch {
+    const start = new Date(at);
+    start.setUTCHours(0, 0, 0, 0);
+    return {
+      dayStart: start.toISOString(),
+      dayEnd: new Date(start.getTime() + 86_400_000).toISOString(),
+    };
+  }
 }
 
 /** "23:00"–"06:30" style window check in the user's local time (SPEC §8). */

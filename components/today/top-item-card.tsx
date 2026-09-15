@@ -81,10 +81,10 @@ export function TopItemCard({
 
   if (!task) {
     return (
-      <section className="mb-7 border-l-[3px] border-l-accent pl-3">
+      <section className="mb-7 border-l-[3px] border-l-accent py-0.5 pl-3.5">
         <p className="section-label">Top item</p>
-        <p className="mt-1 font-display text-[22px] text-ink-2">Nothing picked for today.</p>
-        <div className="mt-2">
+        <p className="display-lead mt-1.5 text-ink-2">Nothing picked for today.</p>
+        <div className="mt-3">
           <Button variant="secondary" onClick={() => setPicking(true)} disabled={pickList.length === 0}>
             {pickList.length === 0 ? "No open tasks" : "Pick one"}
           </Button>
@@ -101,10 +101,10 @@ export function TopItemCard({
   }
 
   return (
-    <section className="mb-7 border-l-[3px] border-l-accent pl-3">
+    <section className="mb-7 border-l-[3px] border-l-accent py-0.5 pl-3.5">
       <p className="section-label">{proposed ? "Proposed top item" : "Top item"}</p>
-      <h2 className="mt-1 font-display text-[22px] font-semibold leading-snug">{task.title}</h2>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <h2 className="display-lead mt-1.5">{task.title}</h2>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <DomainChip slug={task.domain_slug} name={task.domain_name} />
         {task.due_date ? (
           <span className="tabular text-[13px] text-ink-2">
@@ -115,7 +115,7 @@ export function TopItemCard({
           <span className="text-[13px] text-ink-2">{task.project_name}</span>
         ) : null}
       </div>
-      {reason ? <p className="mt-1.5 text-[14px] text-ink-2">{reason}</p> : null}
+      {reason ? <p className="mt-2 text-[14px] text-ink-2">{reason}</p> : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={done} disabled={pending || task.is_mirror}>

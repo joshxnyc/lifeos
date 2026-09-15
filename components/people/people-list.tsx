@@ -47,13 +47,15 @@ export function PeopleList({ people }: { people: PersonRow[] }) {
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search people"
         aria-label="Search people"
-        className="mb-6 h-11 w-full rounded-card border border-line bg-paper-2 px-3 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:border-accent"
+        className="mb-6 h-11 w-full rounded-card bg-paper-2 px-3.5 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:ring-1 focus:ring-accent"
       />
 
       {overdue.length ? (
-        <section className="mb-7">
-          <h2 className="section-label mb-1">Overdue follow-ups</h2>
-          <div className="border-t border-line">
+        <section className="mb-6">
+          <h2 className="section-label text-danger">
+            Overdue follow-ups · <span className="tabular">{overdue.length}</span>
+          </h2>
+          <div className="mt-1">
             {overdue.map((p) => (
               <PersonListRow key={p.id} person={p} flagOverdue />
             ))}
@@ -63,8 +65,11 @@ export function PeopleList({ people }: { people: PersonRow[] }) {
 
       {rest.length ? (
         <section>
-          {overdue.length ? <h2 className="section-label mb-1">Everyone else</h2> : null}
-          <div className="border-t border-line">
+          <h2 className="section-label">
+            {overdue.length ? "Everyone else" : "Everyone"} ·{" "}
+            <span className="tabular">{rest.length}</span>
+          </h2>
+          <div className="mt-1">
             {rest.map((p) => (
               <PersonListRow key={p.id} person={p} />
             ))}
@@ -88,18 +93,18 @@ function PersonListRow({ person, flagOverdue }: { person: PersonRow; flagOverdue
   return (
     <Link
       href={`/people/${person.id}`}
-      className="flex min-h-[56px] items-center gap-3 border-b border-line py-2.5"
+      className="flex min-h-[56px] items-center gap-3 border-b border-line py-3"
     >
-      <PersonAvatar name={person.name} slug={person.domain_slug} size={32} />
+      <PersonAvatar name={person.name} slug={person.domain_slug} size={40} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] text-ink">{person.name}</span>
+        <span className="block truncate text-[15px] font-medium text-ink">{person.name}</span>
         <span className="block truncate text-[13px] text-ink-2">
           {person.relationship ?? person.company ?? "No relationship set"}
         </span>
       </span>
       <span className="shrink-0 text-right">
         <span
-          className={`block text-[13px] tabular ${flagOverdue ? "text-danger" : "text-ink-2"}`}
+          className={`tabular block text-[13px] ${flagOverdue ? "text-danger" : "text-ink-2"}`}
         >
           {timeAgo(person.last_contact_at)}
         </span>

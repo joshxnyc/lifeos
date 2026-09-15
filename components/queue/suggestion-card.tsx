@@ -69,28 +69,32 @@ export function SuggestionCard(props: SuggestionCardProps) {
 
   if (resolved) {
     return (
-      <div className="border-b border-line px-1 py-3 text-[13px] text-ink-2">
+      <div className="rounded-card border border-line px-3.5 py-3 text-[13px] text-ink-2">
         {resolved === "accepted" ? "Accepted." : "Dismissed."}
       </div>
     );
   }
 
-  const underlay = dx > 0 ? "bg-accent-soft" : "bg-paper-2";
+  // Canvas 1e: accent underlay behind an accept swipe, ink-3 behind a dismiss.
+  const underlay = dx > 0 ? "bg-accent text-paper" : "bg-ink-3 text-paper";
 
   return (
-    <div className="relative overflow-hidden border-b border-line">
+    <div className="relative overflow-hidden rounded-card">
       <div
-        className={cn("absolute inset-0 flex items-center justify-between px-5 text-[13px]", underlay)}
+        className={cn(
+          "absolute inset-0 flex items-center justify-between px-[18px] text-[14px] font-medium",
+          underlay,
+        )}
         aria-hidden
       >
-        <span className={cn("text-accent", dx > 24 ? "opacity-100" : "opacity-0")}>Accept</span>
-        <span className={cn("text-ink-2", dx < -24 ? "opacity-100" : "opacity-0")}>Dismiss</span>
+        <span className={dx > 24 ? "opacity-100" : "opacity-0"}>Accept</span>
+        <span className={dx < -24 ? "opacity-100" : "opacity-0"}>Dismiss</span>
       </div>
 
       <article
         style={{ transform: `translateX(${dx}px)` }}
         className={cn(
-          "relative bg-paper py-4 pl-1 pr-1 touch-pan-y",
+          "relative touch-pan-y rounded-card border border-line bg-paper p-3.5",
           !dragging && "transition-transform duration-150",
           pending && "opacity-60",
         )}
@@ -115,10 +119,10 @@ export function SuggestionCard(props: SuggestionCardProps) {
         }}
       >
         <p className="section-label">{KIND_LABEL[props.kind]}</p>
-        <h3 className="mt-1 text-[17px] font-medium leading-snug text-ink">{props.title}</h3>
+        <h3 className="mt-1 text-[17px] leading-[1.35] font-medium text-ink">{props.title}</h3>
         {props.detail ? <p className="mt-1 text-[13px] text-ink-2">{props.detail}</p> : null}
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <ChipSelect
             label="Domain"
             value={domainId}
@@ -143,42 +147,49 @@ export function SuggestionCard(props: SuggestionCardProps) {
             options={props.people.map((p) => ({ value: p.id, label: p.name }))}
             placeholder="No person"
           />
-          <label className="inline-flex h-11 items-center gap-1.5 rounded-full border border-line px-3 text-[12px] text-ink-2">
+          <label className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-paper-2 px-2.5 text-[13px] text-ink-2">
             <span className="sr-only">Due date</span>
             <input
               type="date"
               value={proposed.due_date ?? ""}
               onChange={(e) => set("due_date", e.target.value || undefined)}
-              className="bg-transparent text-[12px] text-ink outline-none"
+              className="bg-transparent text-[13px] text-ink outline-none"
             />
           </label>
         </div>
 
+        {/* EvidenceQuote (canvas 1e): inset, Fraunces italic, ink-2, quoted. */}
         {props.evidence ? (
-          <blockquote className="mt-3 border-l-2 border-line py-0.5 pl-3 font-display text-[14px] italic leading-relaxed text-ink-2">
-            {props.evidence}
+          <blockquote className="mt-3 ml-2 border-l-2 border-line py-1.5 pl-3 font-display text-[15px] leading-[1.45] italic text-ink-2">
+            {`“${props.evidence}”`}
           </blockquote>
         ) : null}
 
+        {/* Confidence as a thin bar, never a number (DESIGN_BRIEF §5.3). */}
         <div
-          className="mt-3 h-[3px] w-24 rounded-full bg-line"
+          className="mt-3 h-[2px] w-full rounded-[2px] bg-line"
           role="img"
           aria-label={`Confidence ${Math.round(props.confidence * 100)} percent`}
         >
           <div
-            className="h-full rounded-full bg-accent"
+            className={cn("h-full rounded-[2px]", props.confidence >= 0.75 ? "bg-ok" : "bg-warn")}
             style={{ width: `${Math.round(Math.min(1, Math.max(0, props.confidence)) * 100)}%` }}
           />
         </div>
 
         {error ? <p className="mt-3 text-[13px] text-danger">{error}</p> : null}
 
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex items-center justify-end gap-4">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run("dismiss")}
+            className="inline-flex h-11 items-center px-1 text-[14px] text-ink-2 disabled:opacity-50"
+          >
+            Dismiss
+          </button>
           <Button variant="primary" disabled={pending} onClick={() => run("accept")}>
             Accept
-          </Button>
-          <Button variant="ghost" disabled={pending} onClick={() => run("dismiss")}>
-            Dismiss
           </Button>
         </div>
       </article>
@@ -201,12 +212,12 @@ function ChipSelect({
 }) {
   if (!options.length) return null;
   return (
-    <label className="inline-flex h-11 items-center rounded-full border border-line px-3 text-[12px] text-ink-2">
+    <label className="inline-flex min-h-11 items-center rounded-full bg-paper-2 px-2.5 text-[13px] text-ink-2">
       <span className="sr-only">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="max-w-[9rem] bg-transparent text-[12px] text-ink outline-none"
+        className="max-w-[9rem] bg-transparent text-[13px] text-ink outline-none"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (

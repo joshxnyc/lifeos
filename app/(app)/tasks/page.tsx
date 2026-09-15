@@ -12,8 +12,11 @@ import {
   parseTaskQuery,
   taskHref,
 } from "@/components/tasks/task-filters";
-import { TASK_SELECT, loadQuickAddContext, toTaskViews } from "@/app/(app)/tasks/queries";
+import { TASK_SELECT, loadQuickAddContext, toTaskView, toTaskViews } from "@/app/(app)/tasks/queries";
 import type { DomainSlug } from "@/lib/types";
+import type { TaskView } from "@/components/tasks/types";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function TasksPage({
   searchParams,
@@ -24,6 +27,10 @@ export default async function TasksPage({
   const query = parseTaskQuery(params);
   const addParam = params.add;
   const prefill = (Array.isArray(addParam) ? addParam[0] : addParam) ?? "";
+  // `/tasks?task=<id>` is the app's task deep link — search results, capture
+  // results, the source view and app-created calendar blocks all point here.
+  const taskParam = Array.isArray(params.task) ? params.task[0] : params.task;
+  const focusId = taskParam && UUID.test(taskParam) ? taskParam : null;
 
   const supabase = await createClient();
   const userId = await currentUserId();
@@ -64,6 +71,21 @@ export default async function TasksPage({
   const hasMore = rows.length > query.limit;
   const tasks = hasMore ? rows.slice(0, query.limit) : rows;
 
+  // The deep-linked task may be filtered out of the list (done, another
+  // domain), so it is loaded on its own and handed to the sheet.
+  let focusTask: TaskView | null = focusId ? (tasks.find((t) => t.id === focusId) ?? null) : null;
+  if (focusId && !focusTask) {
+    const { data: one } = await supabase
+      .from("tasks")
+      .select(TASK_SELECT)
+      .eq("id", focusId)
+      .maybeSingle();
+    focusTask = one ? toTaskView(one) : null;
+  }
+  // Mirrored Notion rows are read-only everywhere (CONTRACTS rule 7): never
+  // open the edit sheet on one.
+  if (focusTask?.is_mirror) focusTask = null;
+
   const subtitle =
     query.filter === "done"
       ? "Completed tasks"
@@ -91,6 +113,7 @@ export default async function TasksPage({
         today={today}
         domains={domains}
         projects={projects}
+        focusTask={focusTask}
         emptyLine={
           query.filter === "done"
             ? "Nothing completed here yet."

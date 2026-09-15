@@ -56,7 +56,8 @@ export function ScorecardView({
 
   return (
     <div>
-      <p className="text-[15px] leading-relaxed text-ink-2">{machineSummary(scorecard)}</p>
+      {/* Canvas 1m: the machine summary leads the screen in Fraunces 22. */}
+      <p className="display-lead mt-6 leading-[1.3]">{machineSummary(scorecard)}</p>
 
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatTile label="Completed" value={scorecard.total.completed} delta={deltas.completed} />
@@ -92,27 +93,20 @@ export function ScorecardView({
 
       {domainRows.length ? (
         <section className="mt-7">
-          <h2 className="section-label mb-2">Completed against created, by domain</h2>
-          <div className="space-y-3">
+          <h2 className="section-label mb-2.5">Completed vs created</h2>
+          <div className="space-y-2">
             {domainRows.map(({ domain, stats }) => (
-              <div key={domain.id} className="flex items-center gap-3">
-                <span className="w-20 shrink-0 text-[13px] text-ink-2">{domain.name}</span>
-                <span className="flex-1">
-                  <span className="block h-2 rounded-full bg-line">
-                    <span
-                      className={cn("block h-2 rounded-full", DOMAIN_COLOR_CLASS[domain.slug as DomainSlug])}
-                      style={{ width: `${(stats!.completed / maxBar) * 100}%` }}
-                    />
-                  </span>
-                  <span className="mt-1 block h-[3px] rounded-full bg-line">
-                    <span
-                      className="block h-[3px] rounded-full bg-ink-3"
-                      style={{ width: `${(stats!.created / maxBar) * 100}%` }}
-                    />
-                  </span>
+              <div key={domain.id} className="flex items-center gap-2.5">
+                <span className="w-16 shrink-0 text-[13px] text-ink">{domain.name}</span>
+                {/* One 8px track per domain; the fill is the share completed. */}
+                <span className="block h-2 flex-1 rounded-full bg-line">
+                  <span
+                    className={cn("block h-2 rounded-full", DOMAIN_COLOR_CLASS[domain.slug as DomainSlug])}
+                    style={{ width: `${(stats!.completed / maxBar) * 100}%` }}
+                  />
                 </span>
-                <span className="w-24 shrink-0 text-right text-[12px] text-ink-2 tabular">
-                  {stats!.completed} of {stats!.created}
+                <span className="tabular w-11 shrink-0 text-right text-[13px] text-ink-2">
+                  {stats!.completed} / {stats!.created}
                 </span>
               </div>
             ))}
@@ -122,12 +116,12 @@ export function ScorecardView({
 
       {scorecard.routines.length ? (
         <section className="mt-7">
-          <h2 className="section-label mb-2">Routines this week</h2>
-          <div className="space-y-2">
+          <h2 className="section-label mb-2.5">Routines this week</h2>
+          <div className="space-y-2.5">
             {scorecard.routines.map((routine) => (
-              <div key={routine.routine_id} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 truncate text-[13px] text-ink">{routine.name}</span>
-                <span className="flex flex-1 items-center gap-1" aria-hidden>
+              <div key={routine.routine_id} className="flex items-center gap-4">
+                <span className="min-w-0 flex-1 truncate text-[14px] text-ink">{routine.name}</span>
+                <span className="flex shrink-0 items-center gap-[5px]" aria-hidden>
                   {dotRow(routine).map((tone, i) => (
                     <span
                       key={i}
@@ -136,13 +130,13 @@ export function ScorecardView({
                         tone === "done" && "bg-ok",
                         tone === "missed" && "bg-danger",
                         tone === "skipped" && "border border-ink-3",
-                        tone === "off" && "bg-line",
+                        tone === "off" && "border border-line",
                       )}
                     />
                   ))}
                 </span>
-                <span className="shrink-0 text-[12px] text-ink-2 tabular">
-                  {routine.done}/{routine.scheduled} · streak {routine.current_streak}
+                <span className="tabular shrink-0 text-[13px] text-ink-2">
+                  {routine.done}/{routine.scheduled}
                 </span>
               </div>
             ))}

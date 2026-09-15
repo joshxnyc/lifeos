@@ -34,7 +34,7 @@ export function Sidebar({
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col overflow-y-auto bg-paper-2 px-3 py-6 md:flex">
-      <Link href="/today" className="mb-6 px-3 font-display text-[22px] font-semibold">
+      <Link href="/today" className="display-lead mb-6 px-3">
         LifeOS
       </Link>
       <nav className="flex flex-col gap-0.5">

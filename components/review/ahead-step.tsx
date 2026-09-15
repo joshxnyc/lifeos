@@ -22,10 +22,12 @@ export interface Candidate {
   meta: string | null;
 }
 
+// Canvas 1p: a heavy day takes the full accent-soft tint, a middling one a
+// half-strength wash, a light day none at all.
 function heat(hours: number): string {
   if (hours >= 6) return "bg-accent-soft";
-  if (hours >= 3) return "bg-paper-2";
-  return "bg-paper";
+  if (hours >= 3) return "bg-accent-soft/50";
+  return "";
 }
 
 export function AheadStep({
@@ -75,50 +77,72 @@ export function AheadStep({
 
   return (
     <div className="py-4">
-      <p className="text-[15px] text-ink-2">
-        Next week: {totalDue} due, {totalHours}h booked.
+      <p className="display-lead mt-2 leading-[1.3]">
+        {totalDue} due, {totalHours} hours of meetings.
       </p>
 
-      <div className="mt-4 grid gap-2 md:grid-cols-7">
+      {/* One row per day on the phone; seven columns from md up. */}
+      <div className="mt-5 flex flex-col gap-0.5 md:grid md:grid-cols-7 md:gap-2">
         {days.map((day) => (
-          <div key={day.date} className={cn("rounded-card border border-line p-2", heat(day.hours))}>
-            <p className="section-label">{day.label}</p>
-            <p className="mt-0.5 text-[12px] text-ink-2 tabular">
-              {day.hours ? `${day.hours}h booked` : "no meetings"}
-            </p>
-            <ul className="mt-1.5 space-y-1">
-              {day.tasks.slice(0, 4).map((t) => (
-                <li key={t.id} className="truncate text-[13px] text-ink">
-                  {t.title}
-                </li>
-              ))}
-              {day.tasks.length > 4 ? (
-                <li className="text-[12px] text-ink-2">+{day.tasks.length - 4} more</li>
-              ) : null}
-              {!day.tasks.length ? <li className="text-[13px] text-ink-3">—</li> : null}
-            </ul>
+          <div
+            key={day.date}
+            className={cn(
+              "grid grid-cols-[44px_1fr_auto] items-center gap-3 rounded-[8px] p-2.5 md:block md:rounded-card md:border md:border-line",
+              heat(day.hours),
+            )}
+          >
+            <span className="text-[15px] font-medium">{day.label}</span>
+            <span
+              className={cn(
+                "truncate text-[14px] md:mt-1.5 md:block md:whitespace-normal",
+                day.tasks.length ? "text-ink" : "text-ink-2",
+              )}
+            >
+              {day.tasks.length
+                ? day.tasks.map((t) => t.title).join(" · ")
+                : "Nothing due"}
+            </span>
+            <span
+              className={cn(
+                "tabular text-[13px] md:mt-1 md:block",
+                day.hours >= 6 ? "font-medium text-accent" : "text-ink-2",
+              )}
+            >
+              {day.hours}h
+            </span>
           </div>
         ))}
       </div>
 
       <section className="mt-7">
-        <h2 className="section-label mb-2">Top 3 for the week</h2>
-        <div className="grid gap-2 md:grid-cols-3">
-          {[0, 1, 2].map((slot) => (
-            <div
-              key={slot}
-              className="flex min-h-[64px] items-center rounded-card border border-dashed border-line p-3 text-[14px]"
-            >
-              {picks[slot] ? (
-                <button className="text-left text-ink" onClick={() => toggle(picks[slot]!)}>
-                  {picks[slot]!.title}
-                  <span className="mt-0.5 block text-[12px] text-ink-2">Tap to remove</span>
-                </button>
-              ) : (
-                <span className="text-ink-3">Slot {slot + 1}</span>
-              )}
-            </div>
-          ))}
+        <h2 className="section-label mb-2.5">Top 3 for the week</h2>
+        {/* Canvas 1p: three numbered slots; an empty one is a dashed row that
+            says what to do, not a placeholder label. */}
+        <div className="flex flex-col gap-2">
+          {[0, 1, 2].map((slot) => {
+            const pick = picks[slot];
+            return (
+              <div
+                key={slot}
+                className={cn(
+                  "flex min-h-11 items-center gap-3 rounded-card border p-3",
+                  pick ? "border-line" : "border-dashed border-ink-3 text-ink-2",
+                )}
+              >
+                <span className="w-4 shrink-0 font-display text-[20px] text-ink-2">{slot + 1}</span>
+                {pick ? (
+                  <button
+                    className="min-w-0 flex-1 truncate text-left text-[15px] text-ink"
+                    onClick={() => toggle(pick)}
+                  >
+                    {pick.title}
+                  </button>
+                ) : (
+                  <span className="flex-1 text-[15px]">Pick one from the list below</span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <ul className="mt-4 border-t border-line">

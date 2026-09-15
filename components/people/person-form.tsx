@@ -60,7 +60,7 @@ export function PersonFormSheet({
             className="max-h-[90dvh] w-full max-w-[520px] overflow-y-auto rounded-t-2xl bg-paper p-5 pb-safe shadow-whisper md:rounded-card"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="font-display text-[22px] font-semibold">
+            <h2 className="display-lead">
               {editing ? "Edit person" : "New person"}
             </h2>
             <form action={submit} className="mt-4 space-y-3">

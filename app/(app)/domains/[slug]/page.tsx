@@ -83,7 +83,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     <>
       <header className="mb-6 flex items-end justify-between gap-3 pt-6">
         <div>
-          <h1 className="flex items-center gap-2.5 font-display text-[28px] font-semibold tracking-tight">
+          <h1 className="display-title flex items-center gap-2.5">
             <span className={cn("size-2.5 rounded-full", DOMAIN_COLOR_CLASS[domain.slug])} />
             {domain.name}
           </h1>

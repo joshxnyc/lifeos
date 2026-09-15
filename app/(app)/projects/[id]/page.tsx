@@ -79,7 +79,7 @@ export default async function ProjectPage({
     <>
       <header className="pt-6">
         <div className="flex items-start justify-between gap-3">
-          <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight">
+          <h1 className="display-title">
             {project.name}
           </h1>
           {project.notion_url ? (

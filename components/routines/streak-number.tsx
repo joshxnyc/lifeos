@@ -6,27 +6,30 @@ import { cn } from "@/lib/utils";
  */
 export function StreakNumber({
   value,
-  unit = "day streak",
+  unit,
   size = 34,
+  tone = "ink",
   className,
 }: {
   value: number;
+  /** Canvas 1h shows the bare number; a unit only where it disambiguates. */
   unit?: string;
   size?: number;
+  tone?: "ink" | "ok" | "warn";
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-baseline gap-1.5", className)}>
+    <div className={cn("flex items-baseline gap-2", className)}>
       <span
-        style={{ fontSize: size, lineHeight: 1 }}
+        style={{ fontSize: size }}
         className={cn(
-          "font-display tabular font-semibold tracking-tight",
-          value > 0 ? "text-ink" : "text-ink-2",
+          "display-number",
+          tone === "ok" ? "text-ok" : tone === "warn" ? "text-warn" : value > 0 ? "text-ink" : "text-ink-2",
         )}
       >
         {value}
       </span>
-      <span className="text-[11px] text-ink-2">{unit}</span>
+      {unit ? <span className="text-[12px] text-ink-2">{unit}</span> : null}
     </div>
   );
 }

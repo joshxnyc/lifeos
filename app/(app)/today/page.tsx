@@ -123,15 +123,13 @@ export default async function TodayPage() {
     Pick<ConnectedAccount, "id" | "provider" | "status" | "writable_calendar_id" | "default_domain_id">
   >;
   const needsReauth = accounts.filter((a) => a.status === "needs_reauth");
+  // Any active Google account with a designated writable calendar can hold the
+  // block: calendar-write prefers the one whose default domain matches the
+  // task and falls back to the first, so the button must not require a match.
   const canBlockTime = Boolean(
     topTask &&
-      accounts.some(
-        (a) =>
-          a.provider === "google" &&
-          a.status === "active" &&
-          a.writable_calendar_id &&
-          a.default_domain_id === topTask?.domain_id,
-      ),
+      !topTask.is_mirror &&
+      accounts.some((a) => a.provider === "google" && a.status === "active" && a.writable_calendar_id),
   );
 
   // --- Schedule -------------------------------------------------------------
@@ -194,29 +192,33 @@ export default async function TodayPage() {
     <div className="lg:flex lg:gap-8">
       <div className="min-w-0 flex-1">
         <header className="pt-6">
-          <h1 className="font-display text-[28px] font-semibold tracking-tight">
-            {formatLongDate(today)}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {queueCount ? (
-              <Link
-                href="/queue"
-                className="inline-flex h-8 items-center rounded-full bg-accent-soft px-3 text-[13px] text-ink"
-              >
-                {queueCount} waiting
-              </Link>
-            ) : null}
-            {needsReauth.length > 0 ? (
-              <Link
-                href="/settings"
-                className="inline-flex h-8 items-center rounded-full border border-danger/40 px-3 text-[13px] text-danger"
-              >
-                {needsReauth.length === 1
-                  ? "1 account needs reconnecting"
-                  : `${needsReauth.length} accounts need reconnecting`}
-              </Link>
-            ) : null}
-          </div>
+          <h1 className="display-title">{formatLongDate(today)}</h1>
+          {queueCount || needsReauth.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              {queueCount ? (
+                <Link
+                  href="/queue"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-accent-soft px-2.5 text-[13px] font-medium text-accent"
+                >
+                  <span className="size-1.5 rounded-full bg-accent" aria-hidden />
+                  {queueCount} waiting
+                </Link>
+              ) : null}
+              {needsReauth.length > 0 ? (
+                // SyncStatusPill (canvas 1a): hairline outline, warn dot, ink-2
+                // text — a problem to fix, not an alarm.
+                <Link
+                  href="/settings"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line px-2.5 text-[13px] text-ink-2"
+                >
+                  <span className="size-1.5 rounded-full bg-warn" aria-hidden />
+                  {needsReauth.length === 1
+                    ? "1 account needs reconnecting"
+                    : `${needsReauth.length} accounts need reconnecting`}
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </header>
 
         <div className="mt-6">

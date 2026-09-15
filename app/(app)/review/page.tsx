@@ -41,7 +41,7 @@ export default async function ReviewIndexPage() {
 
       <section className="rounded-card border border-line bg-paper-2 p-5">
         <p className="section-label">This week</p>
-        <p className="mt-1 font-display text-[22px] font-semibold leading-snug">
+        <p className="display-lead mt-1">
           {current?.status === "done"
             ? "Reviewed."
             : current

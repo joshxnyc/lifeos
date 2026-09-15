@@ -55,7 +55,7 @@ export function DormantStep({
   if (!item) {
     return (
       <div className="py-10">
-        <p className="font-display text-[22px] leading-snug">
+        <p className="display-lead">
           {total === 0 ? "Nothing dormant." : `${total} decided. Nothing left dormant.`}
         </p>
         <div className="mt-5">
@@ -70,13 +70,17 @@ export function DormantStep({
   return (
     <div className="mx-auto max-w-[560px] py-6">
       <p className="section-label">
-        {decided + 1} of {total} · {item.kind === "project" ? "Project" : "Person"}
+        {decided + 1} of {total}
       </p>
 
-      <article className="mt-3 rounded-card border border-line bg-paper-2 p-5">
-        <h2 className="font-display text-[22px] font-semibold leading-snug">{item.name}</h2>
-        <p className="mt-2 text-[13px] text-ink-2">Quiet for {item.quiet_for}</p>
-        {item.detail ? <p className="mt-1 text-[13px] text-ink-2">{item.detail}</p> : null}
+      {/* Canvas 1o: same raised decision card as Slipped, with the kind and
+          the quiet stretch as the label line. */}
+      <article className="mt-3 rounded-card border border-line bg-raise px-[18px] py-[22px] shadow-whisper">
+        <p className="section-label">
+          {item.kind === "project" ? "Project" : "Person"} · no activity for {item.quiet_for}
+        </p>
+        <h2 className="display-lead mt-2">{item.name}</h2>
+        {item.detail ? <p className="mt-3.5 text-[13px] text-ink-2">{item.detail}</p> : null}
       </article>
 
       {error ? <p className="mt-3 text-[13px] text-danger">{error}</p> : null}
@@ -104,18 +108,34 @@ export function DormantStep({
           </div>
         </div>
       ) : (
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => setReviving(true)}>
-            Revive
+        <div className="mt-5 flex flex-col gap-2">
+          <Button
+            variant="primary"
+            onClick={() => setReviving(true)}
+            className="h-auto w-full rounded-card bg-ink py-3.5 text-[15px] text-paper"
+          >
+            Revive with a next action
           </Button>
-          <Button variant="secondary" disabled={pending} onClick={() => decide("park")}>
-            Park
-          </Button>
-          {item.kind === "project" ? (
-            <Button variant="secondary" disabled={pending} onClick={() => decide("close")}>
-              Close
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              disabled={pending}
+              onClick={() => decide("park")}
+              className="h-auto w-full rounded-card py-3.5 text-[15px]"
+            >
+              Park
             </Button>
-          ) : null}
+            {item.kind === "project" ? (
+              <Button
+                variant="secondary"
+                disabled={pending}
+                onClick={() => decide("close")}
+                className="h-auto w-full rounded-card py-3.5 text-[15px]"
+              >
+                Close
+              </Button>
+            ) : null}
+          </div>
         </div>
       )}
       {item.kind === "person" ? (

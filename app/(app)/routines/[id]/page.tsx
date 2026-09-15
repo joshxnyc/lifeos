@@ -15,11 +15,12 @@ import { dayStatus, lastDates, scheduleLine, shortTime } from "@/components/rout
 
 const WEEKS = 12;
 
+// Canvas 1i: the number leads at 34px Fraunces, the label sits under it.
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="section-label">{label}</p>
-      <p className="tabular font-display text-[28px] font-semibold tracking-tight">{value}</p>
+      <p className="display-number">{value}</p>
+      <p className="mt-1 text-[12px] text-ink-2">{label}</p>
     </div>
   );
 }
@@ -69,18 +70,18 @@ export default async function RoutineDetailPage({
     <>
       <Link
         href="/routines"
-        className="-ml-2 mt-4 inline-flex h-11 items-center gap-1 pl-2 pr-3 text-[14px] text-ink-2"
+        className="-ml-2 mt-4 inline-flex h-11 items-center gap-1 pr-3 pl-2 text-[15px] text-accent"
       >
         <ChevronLeft className="size-4" aria-hidden />
         Routines
       </Link>
 
-      <header className="mb-6 mt-1">
-        <h1 className="font-display text-[28px] font-semibold tracking-tight">
+      <header className="mt-1 mb-6">
+        <h1 className="display-title">
           {routine.emoji ? <span className="mr-2">{routine.emoji}</span> : null}
           {routine.name}
         </h1>
-        <p className="tabular mt-0.5 text-[13px] text-ink-2">
+        <p className="tabular mt-1 text-[13px] text-ink-2">
           {scheduleLine(routine.schedule_days, routine.reminder_time)}
           {routine.reminder_time && routine.nudge_enabled
             ? ` · nudge at ${shortTime(routine.reminder_time)} +${routine.grace_minutes}m`
@@ -96,15 +97,15 @@ export default async function RoutineDetailPage({
       </section>
 
       <section className="mb-8">
-        <h2 className="section-label mb-2">Last 28 days</h2>
-        <DotStrip days={strip} size={8} />
-        <p className="tabular mt-1.5 text-[12px] text-ink-2">
+        <h2 className="section-label mb-2.5">Last 28 days</h2>
+        <DotStrip days={strip} />
+        <p className="tabular mt-3 text-[13px] text-ink-2">
           {doneCount} done · {skippedCount} skipped · {logs.length} days logged in total
         </p>
       </section>
 
       <section className="mb-8">
-        <h2 className="section-label mb-2">History</h2>
+        <h2 className="section-label mb-2.5">By weekday · last {WEEKS} weeks</h2>
         <RoutineHeatmap
           today={today}
           scheduleDays={routine.schedule_days}

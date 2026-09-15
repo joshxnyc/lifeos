@@ -76,7 +76,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         <div className="flex min-w-0 items-start gap-3">
           <PersonAvatar name={person.name} slug={(domain?.slug as DomainSlug) ?? null} size={44} />
           <div className="min-w-0">
-            <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight">
+            <h1 className="display-title">
               {person.name}
             </h1>
             <p className="text-[14px] text-ink-2">

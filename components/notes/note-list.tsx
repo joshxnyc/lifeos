@@ -44,35 +44,42 @@ function Group({
 
   return (
     <section>
-      <h2 className="section-label mb-2">{title}</h2>
-      <ul>
+      <h2 className="section-label">{title}</h2>
+      <ul className="mt-1">
         {notes.map((note) => {
           const domain = note.domain_id ? domainById.get(note.domain_id) : undefined;
           const project = note.project_id ? projectById.get(note.project_id) : undefined;
           return (
             <li key={note.id} className="border-b border-line">
-              <Link
-                href={`/notes/${note.id}`}
-                className="flex min-h-[44px] items-start gap-3 py-3 active:bg-paper-2"
-              >
-                <span
-                  className={cn(
-                    "mt-1 h-8 w-[3px] shrink-0 rounded-full",
-                    domain ? DOMAIN_COLOR_CLASS[domain.slug as DomainSlug] : "bg-transparent",
-                  )}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-display text-[17px] text-ink">
+              {/* Canvas 2d: title and date on one line, a preview under it,
+                  then the domain/project as a chip with a colour dot. */}
+              <Link href={`/notes/${note.id}`} className="block py-3 active:bg-paper-2">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="truncate font-display text-[17px] font-medium text-ink">
                     {note.title || "Untitled"}
                   </span>
-                  <span className="mt-0.5 block truncate text-[13px] text-ink-2">
-                    {preview(note.body_md) || "Empty"}
+                  <span className="tabular shrink-0 text-[12px] text-ink-2">
+                    {shortDate(note.updated_at)}
                   </span>
                 </span>
-                <span className="shrink-0 text-[12px] tabular text-ink-2">
-                  {project ? `${project.name} · ` : ""}
-                  {shortDate(note.updated_at)}
+                <span className="mt-0.5 block truncate text-[13px] text-ink-2">
+                  {preview(note.body_md) || "Empty"}
                 </span>
+                {domain || project ? (
+                  <span className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-paper-2 px-2 py-0.5 text-[12px] text-ink">
+                      {domain ? (
+                        <span
+                          className={cn(
+                            "size-1.5 shrink-0 rounded-full",
+                            DOMAIN_COLOR_CLASS[domain.slug as DomainSlug],
+                          )}
+                        />
+                      ) : null}
+                      {project?.name ?? domain?.name}
+                    </span>
+                  </span>
+                ) : null}
               </Link>
             </li>
           );

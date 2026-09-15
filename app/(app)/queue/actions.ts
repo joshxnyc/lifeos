@@ -110,6 +110,17 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
     if (!proposed.existing_task_id || !proposed.due_date) {
       throw new Error("This deadline change needs a task and a date.");
     }
+    // The model supplies existing_task_id; a stale or hallucinated id would
+    // otherwise update nothing and then break the resulting_task_id foreign
+    // key, leaving the card "accepted" on screen and pending in the database.
+    const { data: target } = await supabase
+      .from("tasks")
+      .select("id, is_mirror")
+      .eq("id", proposed.existing_task_id)
+      .maybeSingle();
+    if (!target) throw new Error("That task no longer exists. Dismiss this one.");
+    if (target.is_mirror) throw new Error("Mirrored tasks are rescheduled in Notion.");
+
     const { error: updateError } = await supabase
       .from("tasks")
       .update({ due_date: proposed.due_date })
@@ -161,7 +172,7 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
     if (projectError) throw new Error(`accept: ${projectError.message}`);
   }
 
-  await supabase
+  const { error: closeError } = await supabase
     .from("suggestions")
     .update({
       status: "accepted",
@@ -170,6 +181,7 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
       proposed,
     })
     .eq("id", suggestion.id);
+  if (closeError) throw new Error(`accept: ${closeError.message}`);
 
   revalidatePath("/queue");
   revalidatePath("/today");

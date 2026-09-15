@@ -3,7 +3,7 @@
 // Renders one or more labelled task sections and owns the two sheets every
 // row can open (reschedule, edit), so there is a single instance of each.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TaskRow } from "@/components/tasks/task-row";
 import { RescheduleSheet } from "@/components/tasks/reschedule-sheet";
@@ -26,6 +26,7 @@ export function TaskList({
   showProject = true,
   emptyLine,
   emptyAction,
+  focusTask = null,
 }: {
   sections: TaskSection[];
   today: string;
@@ -34,31 +35,36 @@ export function TaskList({
   showProject?: boolean;
   emptyLine?: string;
   emptyAction?: React.ReactNode;
+  /** Deep link target (`/tasks?task=…`): opens straight into the edit sheet. */
+  focusTask?: TaskView | null;
 }) {
   const [rescheduling, setRescheduling] = useState<TaskView | null>(null);
-  const [editing, setEditing] = useState<TaskView | null>(null);
+  const [editing, setEditing] = useState<TaskView | null>(focusTask);
+
+  const focusId = focusTask?.id ?? null;
+  useEffect(() => {
+    if (focusTask) setEditing(focusTask);
+    // Re-open only when the deep link itself changes, not on every re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
 
   const filled = sections.filter((s) => s.tasks.length > 0);
 
-  if (filled.length === 0) {
-    return emptyLine ? <EmptyState line={emptyLine} action={emptyAction} /> : null;
-  }
-
   return (
     <>
+      {filled.length === 0 && emptyLine ? (
+        <EmptyState line={emptyLine} action={emptyAction} />
+      ) : null}
+
       {filled.map((section) => (
-        <section key={section.key} className="mb-7">
+        <section key={section.key} className="mb-6">
           {section.label ? (
-            <div className="mb-1 flex items-baseline justify-between">
-              <h2
-                className={cn("section-label", section.tone === "danger" && "text-danger")}
-              >
-                {section.label}
-              </h2>
-              <span className="tabular text-[12px] text-ink-2">{section.tasks.length}</span>
-            </div>
+            // Canvas: one line, count appended — "Overdue · 2".
+            <h2 className={cn("section-label", section.tone === "danger" && "text-danger")}>
+              {section.label} · <span className="tabular">{section.tasks.length}</span>
+            </h2>
           ) : null}
-          <ul className="border-t border-line">
+          <ul className="mt-1.5">
             {section.tasks.map((task) => (
               <TaskRow
                 key={task.id}

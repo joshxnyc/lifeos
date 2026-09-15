@@ -20,16 +20,23 @@ export function StatTile({
   const good = hasDelta ? (goodDirection === "up" ? up : !up) : false;
 
   return (
-    <div className="rounded-card border border-line bg-paper-2 p-3">
-      <p className="section-label">{label}</p>
-      <p className="mt-1 font-display text-[28px] font-semibold leading-none tracking-tight tabular">
+    // Canvas 1m: hairline card on paper, the number first at 34px, the label
+    // under it, then the delta against the four-week average.
+    <div className="rounded-card border border-line p-3.5">
+      <p className="display-number">
         {value}
-        {suffix ? <span className="ml-0.5 text-[17px] text-ink-2">{suffix}</span> : null}
+        {suffix ? <span className="text-[20px]">{suffix}</span> : null}
       </p>
-      <p className={cn("mt-1 h-4 text-[12px] tabular", hasDelta ? (good ? "text-ok" : "text-danger") : "text-ink-2")}>
+      <p className="mt-1.5 text-[13px] text-ink-2">{label}</p>
+      <p
+        className={cn(
+          "tabular mt-0.5 text-[13px]",
+          hasDelta ? (good ? "text-ok" : "text-danger") : "text-ink-2",
+        )}
+      >
         {hasDelta
-          ? `${up ? "↑" : "↓"} ${Math.abs(Math.round((delta ?? 0) * 10) / 10)}${suffix ?? ""} vs 4-week average`
-          : "flat vs 4-week average"}
+          ? `${up ? "↑" : "↓"} ${Math.abs(Math.round((delta ?? 0) * 10) / 10)}${suffix ?? ""} vs 4-wk avg`
+          : "level vs 4-wk avg"}
       </p>
     </div>
   );

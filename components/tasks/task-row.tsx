@@ -8,7 +8,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Check, CalendarClock, ExternalLink, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PersonAvatar, DOMAIN_EDGE_CLASS } from "@/components/ui/domain";
+import { PersonAvatar, DOMAIN_EDGE_CLASS, NotionGlyph } from "@/components/ui/domain";
 import { completeTask, reopenTask } from "@/app/(app)/tasks/actions";
 import { toast } from "@/components/tasks/toast";
 import { DUE_TONE_CLASS, dueTone, formatDueLabel, relativeDayLabel } from "@/components/tasks/format";
@@ -102,7 +102,7 @@ export function TaskRow({
   return (
     <li
       className={cn(
-        "relative overflow-hidden border-b border-line last:border-b-0",
+        "relative overflow-hidden border-b border-line",
         completing && "task-completing",
       )}
     >
@@ -110,7 +110,7 @@ export function TaskRow({
         <div
           aria-hidden
           className={cn(
-            "absolute inset-0 flex items-center px-4 text-[13px] font-medium text-white",
+            "absolute inset-0 flex items-center px-4 text-[14px] font-medium text-paper",
             dx > 0 ? "justify-start bg-ok" : "justify-end bg-ink-3",
           )}
         >
@@ -120,7 +120,7 @@ export function TaskRow({
 
       <div
         className={cn(
-          "group relative flex min-h-11 items-start gap-2 border-l-[3px] bg-paper py-2 pl-2 pr-1",
+          "group relative flex min-h-11 items-center gap-1 border-l-[3px] bg-paper py-1 pr-1",
           DOMAIN_EDGE_CLASS[task.domain_slug],
         )}
         style={{
@@ -133,11 +133,12 @@ export function TaskRow({
         onTouchEnd={onTouchEnd}
         onTouchCancel={onTouchEnd}
       >
+        {/* Canvas: a 20px rounded-6 square, hollow ink-3 when open, filled ok
+            with a tick when done. Mirrored rows carry the same shape but no
+            control — they are completed in Notion. */}
         {task.is_mirror ? (
           <span className="flex size-11 shrink-0 items-center justify-center" aria-hidden>
-            <span className="flex size-[22px] items-center justify-center rounded-[4px] border border-line font-display text-[12px] leading-none text-ink-2">
-              N
-            </span>
+            <span className="size-5 rounded-[6px] border-[1.5px] border-ink-3 opacity-50" />
           </span>
         ) : (
           <button
@@ -148,8 +149,8 @@ export function TaskRow({
           >
             <span
               className={cn(
-                "flex size-[22px] items-center justify-center rounded-full border transition-colors",
-                done ? "border-ok bg-ok text-white" : "border-ink-3",
+                "flex size-5 items-center justify-center rounded-[6px] border-[1.5px] transition-colors",
+                done ? "border-ok bg-ok text-paper" : "border-ink-3",
               )}
             >
               {done ? <Check size={13} strokeWidth={3} /> : null}
@@ -163,10 +164,11 @@ export function TaskRow({
               href={task.external_url ?? undefined}
               target="_blank"
               rel="noreferrer"
-              className="flex items-start gap-1.5 text-[15px] text-ink"
+              className="flex items-center gap-1.5 text-[15px] text-ink"
             >
               <span className="min-w-0 break-words">{task.title}</span>
-              <ExternalLink size={13} className="mt-1 shrink-0 text-ink-3" />
+              <NotionGlyph />
+              <ExternalLink size={13} className="shrink-0 text-ink-3" />
             </a>
           ) : (
             <button
@@ -205,27 +207,27 @@ export function TaskRow({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-0.5 py-1.5 pl-1 text-right">
-          <div className="flex items-center gap-2">
-            {task.priority === 3 ? (
-              <span aria-label="High priority" className="size-1.5 rounded-full bg-accent" />
-            ) : null}
-            {due ? (
-              <span className={cn("tabular text-[12px]", DUE_TONE_CLASS[tone])}>{due}</span>
-            ) : scheduledOnly && task.scheduled_date ? (
-              <span className="tabular text-[12px] text-ink-2">
-                Do {relativeDayLabel(task.scheduled_date, today).toLowerCase()}
-              </span>
-            ) : null}
-            {task.person_name ? (
-              <PersonAvatar name={task.person_name} slug={task.domain_slug} size={22} />
-            ) : null}
-          </div>
+        {/* Canvas meta: one 13px ink-2 row — project or avatar, then the due
+            date in warn (today) or danger (overdue). */}
+        <div className="flex shrink-0 items-center gap-2 pl-1 text-[13px] text-ink-2">
+          {task.priority === 3 ? (
+            <span aria-label="High priority" className="size-1.5 rounded-full bg-accent" />
+          ) : null}
           {showProject && (task.project_name || task.owner === "them") ? (
-            <span className="max-w-[150px] truncate text-[12px] text-ink-2">
+            <span className="hidden max-w-[150px] truncate sm:inline">
               {task.owner === "them" ? "Waiting" : null}
               {task.owner === "them" && task.project_name ? " · " : null}
               {task.project_name}
+            </span>
+          ) : null}
+          {task.person_name ? (
+            <PersonAvatar name={task.person_name} slug={task.domain_slug} size={22} />
+          ) : null}
+          {due ? (
+            <span className={cn("tabular", DUE_TONE_CLASS[tone])}>{due}</span>
+          ) : scheduledOnly && task.scheduled_date ? (
+            <span className="tabular">
+              Do {relativeDayLabel(task.scheduled_date, today).toLowerCase()}
             </span>
           ) : null}
         </div>

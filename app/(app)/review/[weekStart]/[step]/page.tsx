@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { Button } from "@/components/ui/button";
 import { StepIndicator } from "@/components/review/step-indicator";
+import { formatShortDate } from "@/components/tasks/format";
 import { ScorecardView } from "@/components/review/scorecard-view";
 import { SlippedStep, type SlippedTask } from "@/components/review/slipped-step";
 import { DormantStep, type DormantItem } from "@/components/review/dormant-step";
@@ -55,12 +56,14 @@ export default async function ReviewStepPage({
 
   return (
     <div className="pb-16">
+      {/* Canvas 1m–1q: an accent "Save and exit" and the week on one line;
+          the step indicator names the step, so there is no screen title. */}
       <div className="flex items-center justify-between gap-3 pt-4">
-        <Link href="/review" className="min-h-11 text-[14px] text-ink-2 hover:text-ink">
-          Review
+        <Link href="/review" className="flex min-h-11 items-center text-[15px] text-accent">
+          Save and exit
         </Link>
-        <span className="text-[13px] text-ink-2 tabular">
-          {weekStart} to {weekEnd}
+        <span className="tabular text-[13px] text-ink-2">
+          {formatShortDate(weekStart)} – {formatShortDate(weekEnd)}
         </span>
       </div>
 
@@ -68,7 +71,7 @@ export default async function ReviewStepPage({
 
       {step === 1 ? (
         <section>
-          <h1 className="mb-4 font-display text-[28px] font-semibold tracking-tight">Scorecard</h1>
+          <h1 className="sr-only">Scorecard</h1>
           <ScorecardView
             scorecard={
               review.status === "done" && review.scorecard
@@ -91,7 +94,7 @@ export default async function ReviewStepPage({
 
       {step === 5 ? (
         <section>
-          <h1 className="mb-2 font-display text-[28px] font-semibold tracking-tight">Coach</h1>
+          <h1 className="sr-only">Coach</h1>
           <CoachLetter
             weekStart={weekStart}
             read={review.coach_text}
@@ -164,7 +167,7 @@ export default async function ReviewStepPage({
 
     return (
       <section>
-        <h1 className="mb-2 font-display text-[28px] font-semibold tracking-tight">Slipped</h1>
+        <h1 className="sr-only">Slipped</h1>
         <SlippedStep
           weekStart={weekStart}
           today={today}
@@ -211,7 +214,7 @@ export default async function ReviewStepPage({
 
     return (
       <section>
-        <h1 className="mb-2 font-display text-[28px] font-semibold tracking-tight">Dormant</h1>
+        <h1 className="sr-only">Dormant</h1>
         <DormantStep
           weekStart={weekStart}
           items={[...dormantProjects, ...lapsedPeople]}
@@ -289,7 +292,7 @@ export default async function ReviewStepPage({
 
     return (
       <section>
-        <h1 className="mb-2 font-display text-[28px] font-semibold tracking-tight">Ahead</h1>
+        <h1 className="sr-only">Ahead</h1>
         <AheadStep
           weekStart={weekStart}
           days={days}

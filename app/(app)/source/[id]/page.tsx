@@ -87,7 +87,7 @@ export default async function SourceItemPage({ params }: { params: Promise<{ id:
         {domain ? <DomainChip slug={domain.slug} name={domain.name} /> : null}
       </div>
 
-      <h1 className="font-display text-[28px] font-semibold tracking-tight">{item.title}</h1>
+      <h1 className="display-title">{item.title}</h1>
 
       <div className="mt-1 flex flex-wrap items-center gap-3">
         <span className="tabular font-mono text-[12px] text-ink-2">

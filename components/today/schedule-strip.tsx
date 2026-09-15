@@ -78,11 +78,11 @@ export function ScheduleStrip({
           ))}
         </ul>
       ) : (
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pt-1 md:mx-0 md:px-0">
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pt-2.5 md:mx-0 md:px-0">
           {events.map((e) => (
             <div
               key={e.id}
-              className="flex w-36 shrink-0 flex-col gap-1 rounded-card border border-line px-2.5 py-2"
+              className="flex min-w-[104px] shrink-0 flex-col gap-0.5 rounded-card border border-line px-2.5 py-2"
             >
               <span className="tabular font-mono text-[11px] text-ink-2">
                 {e.all_day ? "all day" : formatClock24(e.starts_at, timezone)}
@@ -94,7 +94,9 @@ export function ScheduleStrip({
                     e.domain_slug ? DOMAIN_COLOR_CLASS[e.domain_slug] : "bg-ink-3",
                   )}
                 />
-                <span className="truncate text-[13px] text-ink">{e.title || "Untitled"}</span>
+                <span className="truncate text-[13px] whitespace-nowrap text-ink">
+                  {e.title || "Untitled"}
+                </span>
               </span>
             </div>
           ))}

@@ -68,7 +68,7 @@ export function NoteEditor({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled"
-          className="w-full bg-transparent font-display text-[28px] font-semibold tracking-tight text-ink outline-none placeholder:text-ink-3"
+          className="display-title w-full bg-transparent text-ink outline-none placeholder:text-ink-3"
         />
         <button
           aria-label={pinned ? "Unpin note" : "Pin note"}

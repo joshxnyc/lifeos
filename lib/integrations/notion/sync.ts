@@ -143,7 +143,7 @@ export async function syncNotion(opts: {
     if (item.changed) stats.items_changed += 1;
 
     if (dbConfig?.taskLike) {
-      const upserted = await upsertMirrorTask(supabase, userId, account, page, dbConfig);
+      const upserted = await upsertMirrorTask(supabase, userId, account, page, dbConfig, item.id);
       if (upserted) stats.mirror_tasks_upserted += 1;
     }
   };
@@ -198,6 +198,7 @@ async function upsertMirrorTask(
   account: ConnectedAccount,
   page: NotionSearchResult,
   db: NotionDatabaseConfig,
+  sourceItemId: string,
 ): Promise<boolean> {
   const domainId = account.default_domain_id ?? (await tarifaDomainId(supabase, userId));
   if (!domainId) return false;
@@ -229,6 +230,9 @@ async function upsertMirrorTask(
     is_mirror: true,
     origin: "notion_mirror",
     origin_id: page.id,
+    // The archive row carries external_url; every task list renders the mirror
+    // link out through the source_items join, so it has to be set here.
+    source_item_id: sourceItemId,
     completed_at: done ? (existing?.status === "done" ? undefined : new Date().toISOString()) : null,
   };
 
