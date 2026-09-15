@@ -1,5 +1,187 @@
-import { PageHeader } from "@/components/ui/page-header";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { DomainChip, PersonAvatar } from "@/components/ui/domain";
+import { PersonMenu } from "@/components/people/person-menu";
+import { PersonNotes } from "@/components/people/person-notes";
+import { CadenceStepper } from "@/components/people/cadence-stepper";
+import { LogContact } from "@/components/people/log-contact";
+import { timeAgo } from "@/components/queue/relative-time";
+import { createClient } from "@/lib/supabase/server";
+import type { Domain, DomainSlug, Note, Person, Task } from "@/lib/types";
 
-export default function Page() {
-  return <PageHeader title="Detail" subtitle="Coming in this build." />;
+export const dynamic = "force-dynamic";
+
+const SOURCE_LABEL: Record<string, string> = {
+  email_thread: "Email",
+  calendar_event: "Calendar",
+  notion_page: "Notion",
+  granola_note: "Meeting",
+};
+
+export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const { data: personRow } = await supabase.from("people").select("*").eq("id", id).maybeSingle();
+  if (!personRow) notFound();
+  const person = personRow as Person;
+
+  const [{ data: domains }, { data: tasks }, { data: notes }, { data: links }, { data: others }] =
+    await Promise.all([
+      supabase.from("domains").select("id, name, slug").order("sort_order"),
+      supabase
+        .from("tasks")
+        .select("*")
+        .eq("person_id", id)
+        .eq("status", "open")
+        .order("due_date", { ascending: true, nullsFirst: false }),
+      supabase.from("notes").select("id, title, updated_at").eq("person_id", id).order("updated_at", {
+        ascending: false,
+      }),
+      supabase
+        .from("people_source_items")
+        .select("role, source_items(id, kind, title, occurred_at, text)")
+        .eq("person_id", id)
+        .limit(50),
+      supabase.from("people").select("id, name").neq("id", id).order("name").limit(500),
+    ]);
+
+  const domainList = (domains ?? []) as Pick<Domain, "id" | "name" | "slug">[];
+  const domain = domainList.find((d) => d.id === person.domain_id) ?? null;
+  const taskRows = (tasks ?? []) as Task[];
+  const youOwe = taskRows.filter((t) => t.owner === "me");
+  const theyOwe = taskRows.filter((t) => t.owner === "them");
+
+  const timeline = ((links ?? []) as {
+    role: string;
+    source_items: { id: string; kind: string; title: string; occurred_at: string | null; text: string } | null;
+  }[])
+    .map((l) => ({ role: l.role, item: l.source_items }))
+    .filter((l): l is { role: string; item: NonNullable<(typeof l)["item"]> } => Boolean(l.item))
+    .sort((a, b) => String(b.item.occurred_at ?? "").localeCompare(String(a.item.occurred_at ?? "")));
+
+  return (
+    <div className="pt-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <PersonAvatar name={person.name} slug={(domain?.slug as DomainSlug) ?? null} size={44} />
+          <div className="min-w-0">
+            <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight">
+              {person.name}
+            </h1>
+            <p className="text-[14px] text-ink-2">
+              {[person.relationship, [person.role, person.company].filter(Boolean).join(" at ")]
+                .filter(Boolean)
+                .join(" · ") || "No relationship set"}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {domain ? <DomainChip slug={domain.slug as DomainSlug} name={domain.name} /> : null}
+              {(person.emails ?? []).map((email) => (
+                <a
+                  key={email}
+                  href={`mailto:${email}`}
+                  className="text-[13px] text-accent underline-offset-2 hover:underline"
+                >
+                  {email}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+        <PersonMenu
+          person={{
+            id: person.id,
+            name: person.name,
+            emails: person.emails,
+            company: person.company,
+            role: person.role,
+            relationship: person.relationship,
+            phone: person.phone,
+            domain_id: person.domain_id,
+          }}
+          domains={domainList}
+          others={(others ?? []) as { id: string; name: string }[]}
+        />
+      </div>
+
+      <section className="mt-6 flex flex-wrap items-center gap-3 border-y border-line py-4">
+        <p className="text-[14px] text-ink-2">
+          Last contact {timeAgo(person.last_contact_at)}
+        </p>
+        <CadenceStepper personId={person.id} days={person.follow_up_every_days} />
+        <LogContact personId={person.id} />
+      </section>
+
+      <div className="mt-7 grid gap-7 md:grid-cols-2">
+        <TaskColumn title="You owe them" tasks={youOwe} empty="Nothing open." />
+        <TaskColumn title="They owe you" tasks={theyOwe} empty="Nothing outstanding." />
+      </div>
+
+      <section className="mt-7">
+        <h2 className="section-label mb-2">Notes</h2>
+        <PersonNotes personId={person.id} notesMd={person.notes_md} />
+        {(notes ?? []).length ? (
+          <ul className="mt-3 border-t border-line">
+            {((notes ?? []) as Pick<Note, "id" | "title" | "updated_at">[]).map((n) => (
+              <li key={n.id} className="border-b border-line">
+                <Link href={`/notes/${n.id}`} className="flex min-h-11 items-center justify-between gap-3 py-2">
+                  <span className="truncate text-[15px] text-ink">{n.title || "Untitled note"}</span>
+                  <span className="shrink-0 text-[12px] text-ink-2">{timeAgo(n.updated_at)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
+      <section className="mt-7">
+        <h2 className="section-label mb-2">Timeline</h2>
+        {timeline.length ? (
+          <ul className="border-t border-line">
+            {timeline.map(({ role, item }) => (
+              <li key={`${item.id}-${role}`} className="border-b border-line">
+                <Link href={`/source/${item.id}`} className="block py-2.5">
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="truncate text-[15px] text-ink">{item.title || "Untitled"}</span>
+                    <span className="shrink-0 text-[12px] text-ink-2 tabular">
+                      {timeAgo(item.occurred_at)}
+                    </span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-[13px] text-ink-2">
+                    {SOURCE_LABEL[item.kind] ?? item.kind} · {(item.text ?? "").replace(/\s+/g, " ").slice(0, 90)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-[14px] text-ink-2">No emails or meetings linked yet.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TaskColumn({ title, tasks, empty }: { title: string; tasks: Task[]; empty: string }) {
+  return (
+    <section>
+      <h2 className="section-label mb-2">
+        {title} {tasks.length ? `· ${tasks.length}` : ""}
+      </h2>
+      {tasks.length ? (
+        <ul className="border-t border-line">
+          {tasks.map((t) => (
+            <li key={t.id} className="flex items-baseline justify-between gap-3 border-b border-line py-2.5">
+              <span className="min-w-0 truncate text-[15px] text-ink">{t.title}</span>
+              {t.due_date ? (
+                <span className="shrink-0 text-[12px] text-ink-2 tabular">{t.due_date}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[14px] text-ink-2">{empty}</p>
+      )}
+    </section>
+  );
 }
