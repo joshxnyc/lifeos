@@ -15,3 +15,6 @@ out/
 *.log
 .vercel
 tsconfig.tsbuildinfo
+
+# serwist build output
+public/sw.js
