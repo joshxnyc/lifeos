@@ -15,6 +15,8 @@ Format: `date — decision — reasoning — decided by (Joshua / Claude Code, c
 - **2026-09-15 — `array_to_string` wrapped in an IMMUTABLE `public.immutable_join()`** for the people search vector (Postgres requires immutable expressions in generated columns). Found by applying the migration to a real Postgres 16. Decided by: Claude Code.
 - **2026-09-15 — notifications.kind check constraint** also allows `needs_reauth`, `sync_failed`, `test` (SPEC §8 table lists needs_reauth/sync_failed as pushes but §4.5 omitted them from the enum). Decided by: Claude Code, spec-consistent.
 
+- **2026-09-15 — Single LLM key via OpenRouter, replacing separate Anthropic + OpenAI keys.** Joshua's call. Models: `anthropic/claude-sonnet-5` (extraction/filing/coach), `anthropic/claude-haiku-4.5` (transcript cleanup), `google/gemini-3.8-flash` (voice transcription — OpenRouter has no Whisper endpoint, so an audio-capable chat model does transcription). `ai_calls.cost_estimate_usd` now records OpenRouter's actual charged cost (usage accounting) instead of an estimate. A direct-OpenAI Whisper fallback stays in the code, dormant unless `OPENAI_API_KEY` is set, in case Safari `audio/mp4` / Chrome `audio/webm` clips transcribe poorly through OpenRouter. Decided by: Joshua (single key), Claude Code (model mapping + fallback).
+
 <!-- Pending entries the spec explicitly expects:
 - Google OAuth consent screen set to "In production" (or the Testing + token-expiry-alert fallback) — log when done, per SPEC §6.1.
 - Granola plan confirmed (Basic vs Business) → which adapter is active — per SPEC §6.3.

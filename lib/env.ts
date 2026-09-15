@@ -6,8 +6,8 @@ const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   TOKEN_ENCRYPTION_KEY: z.string().min(1),
   JOBS_SECRET: z.string().min(1),
-  ANTHROPIC_API_KEY: z.string().min(1),
-  OPENAI_API_KEY: z.string().optional().default(""),
+  OPENROUTER_API_KEY: z.string().min(1),
+  OPENAI_API_KEY: z.string().optional().default(""), // optional Whisper fallback only
   GOOGLE_CLIENT_ID: z.string().optional().default(""),
   GOOGLE_CLIENT_SECRET: z.string().optional().default(""),
   NOTION_TOKEN: z.string().optional().default(""),

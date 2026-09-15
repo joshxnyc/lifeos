@@ -35,8 +35,8 @@ At [vercel.com](https://vercel.com) (Hobby tier):
 
 ### 4. API keys
 
-- [ ] `ANTHROPIC_API_KEY` — [console.anthropic.com](https://console.anthropic.com) (extraction, filing, coach; expect ~$3–8/month)
-- [ ] `OPENAI_API_KEY` — [platform.openai.com](https://platform.openai.com) (transcription only; <$1/month)
+- [ ] `OPENROUTER_API_KEY` — [openrouter.ai](https://openrouter.ai/keys). The single LLM key (Joshua's decision, 2026-09-15): Claude Sonnet via OpenRouter for extraction/filing/coach, Claude Haiku for cleanup, Gemini Flash for voice transcription. Expect ~$3–8/month plus OpenRouter's ~5% fee.
+- [ ] `OPENAI_API_KEY` — optional. OpenRouter has no Whisper endpoint, so transcription runs through an audio-capable chat model. If browser-recorded audio (Safari `audio/mp4`, Chrome `audio/webm`) ever transcribes poorly through OpenRouter, set this and direct Whisper takes over transcription automatically.
 
 ### 5. Generate secrets (one terminal session)
 

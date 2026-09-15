@@ -1,28 +1,32 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { readFile } from "fs/promises";
 import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/env";
 
-// SPEC §7: all LLM calls use tool use for structured output, and every call
-// is logged to ai_calls so Settings can show monthly AI spend.
+// SPEC §7 + DECISIONS.md: all LLM traffic goes through OpenRouter on a single
+// key (Joshua's call, 2026-09-15). Structured output via forced tool calls;
+// every call logged to ai_calls so Settings can show monthly AI spend.
+// OpenRouter returns the real cost when usage accounting is requested.
 
-// SPEC §3 names "current Sonnet" for extraction/filing/coach and Haiku for
-// cheap classification. Keep ids here so a model bump is a one-line change.
-export const MODEL_MAIN = "claude-sonnet-5";
-export const MODEL_CHEAP = "claude-haiku-4-5";
+export const MODEL_MAIN = "anthropic/claude-sonnet-5";
+export const MODEL_CHEAP = "anthropic/claude-haiku-4.5";
+/** Audio-capable model used for voice-capture transcription. */
+export const MODEL_AUDIO = "google/gemini-3.8-flash";
 
-// USD per 1M tokens (input, output) — for the ai_calls cost estimate only.
-const PRICING: Record<string, { input: number; output: number }> = {
-  "claude-sonnet-5": { input: 2, output: 10 },
-  "claude-haiku-4-5": { input: 1, output: 5 },
-  "claude-opus-5": { input: 5, output: 25 },
-};
-
-let client: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: serverEnv().ANTHROPIC_API_KEY });
+let client: OpenAI | null = null;
+export function openrouter(): OpenAI {
+  if (!client) {
+    client = new OpenAI({
+      apiKey: serverEnv().OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1",
+      defaultHeaders: {
+        "HTTP-Referer": serverEnv().APP_URL,
+        "X-Title": "LifeOS",
+      },
+    });
+  }
   return client;
 }
 
@@ -37,6 +41,33 @@ export async function loadPrompt(name: string, vars: Record<string, string> = {}
   return text;
 }
 
+interface UsageWithCost {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cost?: number;
+}
+
+async function logCall(
+  supabase: SupabaseClient,
+  userId: string,
+  pipeline: string,
+  model: string,
+  usage: UsageWithCost | undefined,
+  latencyMs: number,
+  refId?: string,
+) {
+  await supabase.from("ai_calls").insert({
+    user_id: userId,
+    pipeline,
+    model,
+    input_tokens: usage?.prompt_tokens ?? 0,
+    output_tokens: usage?.completion_tokens ?? 0,
+    latency_ms: latencyMs,
+    cost_estimate_usd: usage?.cost ?? 0,
+    ref_id: refId ?? null,
+  });
+}
+
 export interface StructuredCallOptions {
   pipeline: string; // logged to ai_calls
   model?: string;
@@ -44,7 +75,7 @@ export interface StructuredCallOptions {
   userContent: string;
   toolName: string;
   toolDescription: string;
-  /** JSON schema for the desired output (the tool's input schema). */
+  /** JSON schema for the desired output (the tool's parameters). */
   schema: Record<string, unknown>;
   maxTokens?: number;
   supabase: SupabaseClient;
@@ -53,59 +84,61 @@ export interface StructuredCallOptions {
 }
 
 /**
- * One structured LLM call: a single tool whose input schema is the desired
- * JSON, forced with tool_choice, thinking disabled for deterministic
- * extraction. Returns the parsed tool input.
+ * One structured LLM call: a single tool whose parameter schema is the
+ * desired JSON, forced with tool_choice. Returns the parsed arguments.
  */
 export async function callStructured<T>(opts: StructuredCallOptions): Promise<T> {
   const model = opts.model ?? MODEL_MAIN;
   const started = Date.now();
 
-  const response = await anthropic().messages.create({
+  const response = await openrouter().chat.completions.create({
     model,
     max_tokens: opts.maxTokens ?? 4096,
-    system: opts.system,
-    thinking: { type: "disabled" },
-    tool_choice: { type: "tool", name: opts.toolName },
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.userContent },
+    ],
     tools: [
       {
-        name: opts.toolName,
-        description: opts.toolDescription,
-        input_schema: opts.schema as Anthropic.Tool.InputSchema,
-        strict: true,
-      } as Anthropic.ToolUnion,
+        type: "function",
+        function: {
+          name: opts.toolName,
+          description: opts.toolDescription,
+          parameters: opts.schema,
+        },
+      },
     ],
-    messages: [{ role: "user", content: opts.userContent }],
+    tool_choice: { type: "function", function: { name: opts.toolName } },
+    // OpenRouter usage accounting: response.usage.cost is the actual charge.
+    // @ts-expect-error OpenRouter extension not in the OpenAI types
+    usage: { include: true },
   });
 
-  const latency = Date.now() - started;
-  const pricing = PRICING[model] ?? { input: 0, output: 0 };
-  const cost =
-    (response.usage.input_tokens * pricing.input + response.usage.output_tokens * pricing.output) / 1_000_000;
-
-  await opts.supabase.from("ai_calls").insert({
-    user_id: opts.userId,
-    pipeline: opts.pipeline,
+  await logCall(
+    opts.supabase,
+    opts.userId,
+    opts.pipeline,
     model,
-    input_tokens: response.usage.input_tokens,
-    output_tokens: response.usage.output_tokens,
-    latency_ms: latency,
-    cost_estimate_usd: cost,
-    ref_id: opts.refId ?? null,
-  });
-
-  const toolUse = response.content.find(
-    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === opts.toolName,
+    response.usage as UsageWithCost | undefined,
+    Date.now() - started,
+    opts.refId,
   );
-  if (!toolUse) {
-    throw new Error(`AI pipeline ${opts.pipeline}: no tool_use block (stop: ${response.stop_reason})`);
+
+  const call = response.choices[0]?.message?.tool_calls?.[0];
+  if (!call || call.type !== "function") {
+    throw new Error(
+      `AI pipeline ${opts.pipeline}: no tool call (finish: ${response.choices[0]?.finish_reason})`,
+    );
   }
-  return toolUse.input as T;
+  try {
+    return JSON.parse(call.function.arguments) as T;
+  } catch {
+    throw new Error(`AI pipeline ${opts.pipeline}: tool arguments were not valid JSON`);
+  }
 }
 
 /**
- * Plain-text call (used by the transcript cleanup pass and the coach where
- * markdown prose is the output). Also logged to ai_calls.
+ * Plain-text call (transcript cleanup, coach prose). Also logged to ai_calls.
  */
 export async function callText(opts: {
   pipeline: string;
@@ -120,32 +153,85 @@ export async function callText(opts: {
   const model = opts.model ?? MODEL_MAIN;
   const started = Date.now();
 
-  const response = await anthropic().messages.create({
+  const response = await openrouter().chat.completions.create({
     model,
     max_tokens: opts.maxTokens ?? 2048,
-    system: opts.system,
-    thinking: { type: "disabled" },
-    messages: [{ role: "user", content: opts.userContent }],
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.userContent },
+    ],
+    // @ts-expect-error OpenRouter extension not in the OpenAI types
+    usage: { include: true },
   });
 
-  const latency = Date.now() - started;
-  const pricing = PRICING[model] ?? { input: 0, output: 0 };
-  const cost =
-    (response.usage.input_tokens * pricing.input + response.usage.output_tokens * pricing.output) / 1_000_000;
-
-  await opts.supabase.from("ai_calls").insert({
-    user_id: opts.userId,
-    pipeline: opts.pipeline,
+  await logCall(
+    opts.supabase,
+    opts.userId,
+    opts.pipeline,
     model,
-    input_tokens: response.usage.input_tokens,
-    output_tokens: response.usage.output_tokens,
-    latency_ms: latency,
-    cost_estimate_usd: cost,
-    ref_id: opts.refId ?? null,
+    response.usage as UsageWithCost | undefined,
+    Date.now() - started,
+    opts.refId,
+  );
+
+  return response.choices[0]?.message?.content ?? "";
+}
+
+/**
+ * Transcribe audio through OpenRouter with an audio-capable model. Used by
+ * lib/transcribe.ts; the `prompt` carries domain/project/people names for
+ * proper-noun accuracy (SPEC §7.1).
+ */
+export async function transcribeViaOpenRouter(opts: {
+  audio: Buffer;
+  mime: string; // audio/mp4 (Safari) | audio/webm (Chrome) | audio/wav ...
+  prompt: string;
+  supabase: SupabaseClient;
+  userId: string;
+  refId?: string;
+}): Promise<string> {
+  const started = Date.now();
+  const format = opts.mime.includes("mp4")
+    ? "m4a"
+    : opts.mime.includes("webm")
+      ? "webm"
+      : opts.mime.includes("mpeg") || opts.mime.includes("mp3")
+        ? "mp3"
+        : "wav";
+
+  const response = await openrouter().chat.completions.create({
+    model: MODEL_AUDIO,
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a transcription engine. Transcribe the audio verbatim in its original language. Output only the transcript text — no preamble, no timestamps, no speaker labels.\n" +
+          `Names and terms likely to appear: ${opts.prompt}`,
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_audio",
+            input_audio: { data: opts.audio.toString("base64"), format },
+          } as never,
+        ],
+      },
+    ],
+    // @ts-expect-error OpenRouter extension not in the OpenAI types
+    usage: { include: true },
   });
 
-  return response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
+  await logCall(
+    opts.supabase,
+    opts.userId,
+    "transcribe",
+    MODEL_AUDIO,
+    response.usage as UsageWithCost | undefined,
+    Date.now() - started,
+    opts.refId,
+  );
+
+  return (response.choices[0]?.message?.content ?? "").trim();
 }
