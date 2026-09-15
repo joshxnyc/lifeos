@@ -131,7 +131,7 @@ body {
 @keyframes task-complete {
   0% {
     opacity: 1;
-    max-height: 60px;
+    max-height: 120px;
   }
   100% {
     opacity: 0;

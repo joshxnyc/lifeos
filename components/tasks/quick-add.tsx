@@ -4,24 +4,14 @@
 // (workstream D); this component only renders the live preview and writes.
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { parseQuickAdd } from "@/lib/domain/quick-add";
+import { parseQuickAdd, type QuickAddResult } from "@/lib/domain/quick-add";
 import { createTask } from "@/app/(app)/tasks/actions";
 import { toast } from "@/components/tasks/toast";
 import { formatClock, relativeDayLabel, PRIORITY_LABEL } from "@/components/tasks/format";
 import { cn } from "@/lib/utils";
 import type { DomainOption, PersonOption, ProjectOption } from "@/components/tasks/types";
 
-export interface QuickAddParsed {
-  title: string;
-  domain_id?: string;
-  project_id?: string;
-  person_id?: string;
-  priority?: 0 | 1 | 2 | 3;
-  due_date?: string;
-  due_time?: string;
-  scheduled_date?: string;
-  tokens: Array<{ raw: string; kind: "domain" | "project" | "person" | "priority" | "due" | "scheduled" }>;
-}
+export type QuickAddParsed = QuickAddResult;
 
 export function parseSafely(
   input: string,
@@ -33,7 +23,7 @@ export function parseSafely(
   },
 ): QuickAddParsed {
   try {
-    return parseQuickAdd(input, ctx) as QuickAddParsed;
+    return parseQuickAdd(input, ctx);
   } catch {
     return { title: input.trim(), tokens: [] };
   }
