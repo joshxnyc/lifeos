@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { readFile } from "fs/promises";
 import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { serverEnv } from "@/lib/env";
+import { requireEnv, serverEnv } from "@/lib/env";
 
 // SPEC §7 + DECISIONS.md: all LLM traffic goes through OpenRouter on a single
 // key (Joshua's call, 2026-09-15). Structured output via forced tool calls;
@@ -19,7 +19,7 @@ let client: OpenAI | null = null;
 export function openrouter(): OpenAI {
   if (!client) {
     client = new OpenAI({
-      apiKey: serverEnv().OPENROUTER_API_KEY,
+      apiKey: requireEnv("OPENROUTER_API_KEY"),
       baseURL: "https://openrouter.ai/api/v1",
       defaultHeaders: {
         "HTTP-Referer": serverEnv().APP_URL,

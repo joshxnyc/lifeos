@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from "crypto";
-import { serverEnv } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 
 /**
  * CSRF for every OAuth connect flow (Google, Granola): a random nonce goes
@@ -16,7 +16,7 @@ import { serverEnv } from "@/lib/env";
 const STATE_KEY_INFO = "lifeos-oauth-state";
 
 function signingKey(): Buffer {
-  const secret = Buffer.from(serverEnv().TOKEN_ENCRYPTION_KEY, "utf8");
+  const secret = Buffer.from(requireEnv("TOKEN_ENCRYPTION_KEY"), "utf8");
   return Buffer.from(hkdfSync("sha256", secret, Buffer.alloc(0), STATE_KEY_INFO, 32));
 }
 

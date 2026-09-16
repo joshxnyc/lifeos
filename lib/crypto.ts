@@ -1,12 +1,12 @@
 import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-import { serverEnv } from "@/lib/env";
+import { requireEnv } from "@/lib/env";
 
 // App-level AES-256-GCM for OAuth tokens at rest (SPEC §3: never store
 // refresh tokens in plaintext). Format: base64(iv | ciphertext | authTag).
 
 function key(): Buffer {
-  const k = Buffer.from(serverEnv().TOKEN_ENCRYPTION_KEY, "base64");
+  const k = Buffer.from(requireEnv("TOKEN_ENCRYPTION_KEY"), "base64");
   if (k.length !== 32) throw new Error("TOKEN_ENCRYPTION_KEY must be 32 bytes base64");
   return k;
 }

@@ -21,8 +21,13 @@ export type JobHandler = (ctx: JobContext) => Promise<Record<string, unknown>>;
  */
 export function jobRoute(jobName: string, handler: JobHandler) {
   return async function POST(req: NextRequest): Promise<NextResponse> {
+    const configured = serverEnv().JOBS_SECRET;
+    if (!configured) {
+      // Fail closed with a clear message rather than matching an empty secret.
+      return NextResponse.json({ error: "JOBS_SECRET is not set in Vercel" }, { status: 500 });
+    }
     const secret = req.headers.get("x-jobs-secret") ?? req.headers.get("authorization")?.replace(/^Bearer /, "");
-    if (!secret || !secretMatches(secret, serverEnv().JOBS_SECRET)) {
+    if (!secret || !secretMatches(secret, configured)) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 

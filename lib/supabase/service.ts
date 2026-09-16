@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
-import { publicEnv, serverEnv } from "@/lib/env";
+import { publicEnv, requireEnv } from "@/lib/env";
 
 /**
  * Service-role client: bypasses RLS. Jobs and OAuth callbacks only
@@ -8,7 +8,7 @@ import { publicEnv, serverEnv } from "@/lib/env";
  */
 export function createServiceClient(): SupabaseClient {
   const { supabaseUrl } = publicEnv();
-  return createSupabaseClient(supabaseUrl, serverEnv().SUPABASE_SERVICE_ROLE_KEY, {
+  return createSupabaseClient(supabaseUrl, requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }

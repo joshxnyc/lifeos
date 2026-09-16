@@ -10,6 +10,7 @@ import { notionConfigured } from "@/lib/integrations/notion/client";
 import { PageHeader } from "@/components/ui/page-header";
 import { SettingsSection } from "@/components/settings/ui";
 import { AccountsSection } from "@/components/settings/accounts-section";
+import { EnvHealth } from "@/components/settings/env-health";
 import { NotionSection } from "@/components/settings/notion-section";
 import { GranolaSection } from "@/components/settings/granola-section";
 import { NotificationsForm } from "@/components/settings/notifications-section";
@@ -77,6 +78,7 @@ export default async function SettingsPage({
   return (
     <>
       <PageHeader title="Settings" />
+      <EnvHealth />
 
       {error ? (
         <p className="mb-5 text-[13px] text-danger">Something went wrong: {error}</p>
