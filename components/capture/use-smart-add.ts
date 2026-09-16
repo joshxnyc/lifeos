@@ -63,10 +63,14 @@ export function useSmartAdd() {
       inFlight.current = true;
       setWorking(true);
       try {
+        const source =
+          typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches
+            ? "phone_text"
+            : "desktop_text";
         const res = await fetch("/api/capture", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text, source: "desktop_text" }),
+          body: JSON.stringify({ text, source }),
         });
         const json = (await res.json()) as { captureId?: string; error?: string };
         if (!res.ok || !json.captureId) throw new Error(json.error ?? "Smart add failed to save.");
