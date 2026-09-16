@@ -55,10 +55,11 @@ export function useSmartAdd() {
   const [working, setWorking] = useState(false);
   const inFlight = useRef(false);
 
+  /** Resolves false when the text could not be filed, so a caller can put it back. */
   const smartAdd = useCallback(
-    async (input: string) => {
+    async (input: string): Promise<boolean> => {
       const text = input.trim();
-      if (!text || inFlight.current) return;
+      if (!text || inFlight.current) return false;
       inFlight.current = true;
       setWorking(true);
       try {
@@ -71,18 +72,23 @@ export function useSmartAdd() {
         if (!res.ok || !json.captureId) throw new Error(json.error ?? "Smart add failed to save.");
 
         const row = await waitForCapture(supabase, json.captureId);
+        router.refresh();
         if (!row) {
           // Still filing after 30s: the job route finishes it either way.
           toast("Still filing. It finishes in the background.");
-        } else if (row.status === "failed") {
-          toast(row.error ?? "Smart add could not file that.");
-        } else {
-          const clarification = row.result?.needs_clarification?.trim();
-          toast(clarification ? `${summarizeCapture(row.result)}. ${clarification}` : summarizeCapture(row.result));
+          return true;
         }
-        router.refresh();
+        if (row.status === "failed") {
+          toast(row.error ?? "Smart add could not file that.");
+          return false;
+        }
+        const summary = summarizeCapture(row.result);
+        const clarification = row.result?.needs_clarification?.trim();
+        toast(clarification ? `${summary}. ${clarification}` : summary);
+        return true;
       } catch (err) {
         toast(err instanceof Error ? err.message : "Smart add failed. Try again.");
+        return false;
       } finally {
         inFlight.current = false;
         setWorking(false);

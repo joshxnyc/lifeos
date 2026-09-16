@@ -147,7 +147,11 @@ export function QuickAdd({
     const raw = value.trim();
     if (!raw || working) return;
     setValue("");
-    void smartAdd(raw).then(() => inputRef.current?.focus());
+    void smartAdd(raw).then((filed) => {
+      // Nothing was created: hand the sentence back rather than lose it.
+      if (!filed) setValue(raw);
+      inputRef.current?.focus();
+    });
   }
 
   return (
