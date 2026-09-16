@@ -4,6 +4,28 @@ import type { AccountStatus } from "@/lib/types";
 
 /** Shared chrome for the Settings sections (DESIGN_BRIEF §5.10, §3). */
 
+/**
+ * Top-level grouping (2026-09-16 polish): Connections / Notifications /
+ * System / Data & appearance. A Fraunces title over a hairline gives the long
+ * page a readable rhythm; the sections inside keep their small caps labels.
+ */
+export function SettingsGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-12">
+      <h2 className="font-display border-b border-line pb-2 text-[20px] font-medium text-ink">
+        {title}
+      </h2>
+      <div className="pt-5">{children}</div>
+    </div>
+  );
+}
+
 export function SettingsSection({
   title,
   hint,

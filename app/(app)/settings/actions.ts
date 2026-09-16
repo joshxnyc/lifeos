@@ -303,3 +303,65 @@ export async function saveTimezone(input: z.infer<typeof Timezone>): Promise<Act
   revalidatePath("/today");
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Jobs: run one by hand
+// ---------------------------------------------------------------------------
+
+/**
+ * "Sync now" / "Run now" from Settings, so a connection can be tested the
+ * moment it is set up instead of waiting for the next cron tick. The action
+ * only relays to the protected job route — same secret, same job_runs logging,
+ * same code path the scheduler uses.
+ */
+const RUNNABLE_JOBS = new Set([
+  "sync-google",
+  "sync-notion",
+  "sync-granola",
+  "extract",
+  "process-captures",
+  "plan-morning",
+  "dormancy-scan",
+  "schedule-day",
+]);
+
+export async function runJobNow(job: string): Promise<{ ok: boolean; detail: string }> {
+  await userScope(); // signed-in owner only
+  if (!RUNNABLE_JOBS.has(job)) return { ok: false, detail: "This job cannot be run by hand." };
+
+  const { requireEnv } = await import("@/lib/env");
+  let base: string;
+  let secret: string;
+  try {
+    base = requireEnv("APP_URL").replace(/\/$/, "");
+    secret = requireEnv("JOBS_SECRET");
+  } catch (err) {
+    return { ok: false, detail: safeErrorMessage(err) };
+  }
+
+  try {
+    const res = await fetch(`${base}/api/jobs/${job}`, {
+      method: "POST",
+      headers: { "x-jobs-secret": secret, "content-type": "application/json" },
+      body: "{}",
+      cache: "no-store",
+    });
+    const json = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      stats?: Record<string, unknown>;
+      error?: string;
+    } | null;
+    revalidatePath("/settings");
+    if (!res.ok || !json?.ok) {
+      return { ok: false, detail: json?.error ?? `The job failed with status ${res.status}.` };
+    }
+    const summary = Object.entries(json.stats ?? {})
+      .filter(([, v]) => ["number", "string", "boolean"].includes(typeof v))
+      .slice(0, 4)
+      .map(([k, v]) => `${k} ${String(v)}`)
+      .join(" · ");
+    return { ok: true, detail: summary || "Done." };
+  } catch (err) {
+    return { ok: false, detail: safeErrorMessage(err) };
+  }
+}

@@ -13,6 +13,7 @@ import { createTask } from "@/app/(app)/tasks/actions";
 import { ParsedChips, parseSafely } from "@/components/tasks/quick-add";
 import { ToastHost, toast } from "@/components/tasks/toast";
 import { useSmartAdd } from "@/components/capture/use-smart-add";
+import { requestRecord } from "@/components/capture/global-record";
 import type { Domain, Project } from "@/lib/types";
 import type { PersonOption } from "@/components/tasks/types";
 
@@ -154,11 +155,14 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
     <>
       <ToastHost />
       {open ? (
-        <div className="fixed inset-0 z-50 bg-ink/20 pt-[15vh]" onClick={() => setOpen(false)}>
+        <div
+          className="animate-fade-in fixed inset-0 z-50 bg-ink/20 pt-[15vh]"
+          onClick={() => setOpen(false)}
+        >
           <div className="mx-auto w-full max-w-[680px] px-4" onClick={(e) => e.stopPropagation()}>
             <Command
               shouldFilter
-              className="overflow-hidden rounded-card border border-line bg-paper shadow-whisper"
+              className="animate-pop-in overflow-hidden rounded-card border border-line bg-paper shadow-whisper"
             >
               <Command.Input
                 autoFocus
@@ -220,6 +224,18 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                     className={ITEM_CLASS}
                   >
                     Search everything for “{query}”
+                  </Command.Item>
+                ) : null}
+                {!query.trim() ? (
+                  <Command.Item
+                    value="record a capture"
+                    onSelect={() => {
+                      setOpen(false);
+                      requestRecord();
+                    }}
+                    className={ITEM_CLASS}
+                  >
+                    Record a capture
                   </Command.Item>
                 ) : null}
                 <Command.Group

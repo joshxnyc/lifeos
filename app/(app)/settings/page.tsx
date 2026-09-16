@@ -8,7 +8,7 @@ import { getNotionConfig } from "@/lib/integrations/notion/config";
 import { googleConfigured } from "@/lib/integrations/google/client";
 import { notionConfigured } from "@/lib/integrations/notion/client";
 import { PageHeader } from "@/components/ui/page-header";
-import { SettingsSection } from "@/components/settings/ui";
+import { SettingsGroup, SettingsSection } from "@/components/settings/ui";
 import { AccountsSection } from "@/components/settings/accounts-section";
 import { EnvHealth } from "@/components/settings/env-health";
 import { NotionSection } from "@/components/settings/notion-section";
@@ -77,7 +77,10 @@ export default async function SettingsPage({
 
   return (
     <>
-      <PageHeader title="Settings" />
+      <PageHeader
+        title="Settings"
+        subtitle="Connections, notifications, scheduled jobs, and your data."
+      />
       <EnvHealth />
 
       {error ? (
@@ -92,43 +95,51 @@ export default async function SettingsPage({
         </p>
       ) : null}
 
-      <AccountsSection
-        accounts={googleAccounts}
-        domains={domains}
-        googleConfigured={googleConfigured()}
-      />
-
-      <NotionSection
-        configured={notionConfigured()}
-        account={notionAccount ? toAccountSummary(notionAccount) : null}
-        config={notionConfig}
-      />
-
-      <GranolaSection account={granolaAccount} hasApiKey={Boolean(env.GRANOLA_API_KEY)} />
-
-      <SettingsSection title="Notifications">
-        <div className="mb-5">
-          <EnablePushSection />
-        </div>
-        <NotificationsForm
-          settings={settings}
-          toggles={toggles}
-          pushoverConfigured={Boolean(env.PUSHOVER_USER_KEY && env.PUSHOVER_APP_TOKEN)}
+      <SettingsGroup title="Connections">
+        <AccountsSection
+          accounts={googleAccounts}
+          domains={domains}
+          googleConfigured={googleConfigured()}
         />
-        <div className="mt-6">
-          <NotificationHistory />
-        </div>
-      </SettingsSection>
 
-      <JobsSection
-        runs={(jobRows ?? []) as JobRun[]}
-        spend={spend}
-        extractionIntervalMinutes={settings.extraction_interval_minutes}
-      />
+        <NotionSection
+          configured={notionConfigured()}
+          account={notionAccount ? toAccountSummary(notionAccount) : null}
+          config={notionConfig}
+        />
 
-      <DataSection />
+        <GranolaSection account={granolaAccount} hasApiKey={Boolean(env.GRANOLA_API_KEY)} />
+      </SettingsGroup>
 
-      <AppearanceSection theme={settings.theme} timezone={settings.timezone} />
+      <SettingsGroup title="Notifications">
+        <SettingsSection title="Push">
+          <div className="mb-5">
+            <EnablePushSection />
+          </div>
+          <NotificationsForm
+            settings={settings}
+            toggles={toggles}
+            pushoverConfigured={Boolean(env.PUSHOVER_USER_KEY && env.PUSHOVER_APP_TOKEN)}
+          />
+          <div className="mt-6">
+            <NotificationHistory />
+          </div>
+        </SettingsSection>
+      </SettingsGroup>
+
+      <SettingsGroup title="System">
+        <JobsSection
+          runs={(jobRows ?? []) as JobRun[]}
+          spend={spend}
+          extractionIntervalMinutes={settings.extraction_interval_minutes}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Data & appearance">
+        <DataSection />
+
+        <AppearanceSection theme={settings.theme} timezone={settings.timezone} />
+      </SettingsGroup>
     </>
   );
 }

@@ -1,24 +1,26 @@
 import { JobPill, Mono, Panel, Row, SettingsSection } from "@/components/settings/ui";
+import { RunJobButton } from "@/components/settings/run-job-button";
 import type { JobRun } from "@/lib/types";
 
 /**
  * AI & Jobs (SPEC §11 observability): the last run of every scheduled job and
  * what this month's AI usage cost. A sync that has quietly stopped shows up
- * here before it shows up as missing tasks.
+ * here before it shows up as missing tasks. Jobs that are safe to poke by
+ * hand get a Run now button — same secret-protected route the cron calls.
  */
-export const JOB_NAMES = [
-  "sync-google",
-  "sync-notion",
-  "sync-granola",
-  "extract",
-  "process-captures",
-  "notifications-tick",
-  "routines-nightly",
-  "plan-morning",
-  "closeout-evening",
-  "review-prompt",
-  "dormancy-scan",
-  "schedule-day",
+const JOBS: Array<{ job: string; label: string; runnable: boolean }> = [
+  { job: "sync-google", label: "Gmail & Calendar sync", runnable: true },
+  { job: "sync-notion", label: "Notion mirror", runnable: true },
+  { job: "sync-granola", label: "Granola sync", runnable: true },
+  { job: "extract", label: "Extraction sweep", runnable: true },
+  { job: "process-captures", label: "Capture processing", runnable: true },
+  { job: "notifications-tick", label: "Notification delivery", runnable: false },
+  { job: "routines-nightly", label: "Routine nightly close", runnable: false },
+  { job: "plan-morning", label: "Morning plan & brief", runnable: false },
+  { job: "closeout-evening", label: "Evening close-out", runnable: false },
+  { job: "review-prompt", label: "Weekly review prompt", runnable: false },
+  { job: "dormancy-scan", label: "Dormancy scan", runnable: true },
+  { job: "schedule-day", label: "Day scheduling", runnable: false },
 ];
 
 export function JobsSection({
@@ -35,16 +37,16 @@ export function JobsSection({
 
   return (
     <SettingsSection
-      title="AI & jobs"
+      title="Scheduled jobs"
       hint={`Extraction sweeps every ${extractionIntervalMinutes} minutes. Google syncs every 15, Notion and Granola every 30.`}
     >
       <Panel>
-        {JOB_NAMES.map((job) => {
+        {JOBS.map(({ job, label, runnable }) => {
           const run = latest.get(job);
           return (
             <Row
               key={job}
-              label={job}
+              label={label}
               hint={
                 run ? (
                   <>
@@ -58,6 +60,7 @@ export function JobsSection({
               }
             >
               {run ? <JobPill status={run.status} /> : <span className="text-[13px] text-ink-3">—</span>}
+              {runnable ? <RunJobButton job={job} /> : null}
             </Row>
           );
         })}

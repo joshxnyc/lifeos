@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { DomainChip } from "@/components/ui/domain";
 import { Waveform } from "@/components/capture/waveform";
 import { CaptureProgress } from "@/components/capture/progress-steps";
+import { formatElapsed, useRecorder } from "@/components/capture/use-recorder";
+import { isPhone, postCapture, uploadAudio } from "@/components/capture/send";
 import { undoCaptureItem } from "@/app/(app)/capture/actions";
 import {
   isNetworkError,
@@ -34,9 +36,6 @@ interface RowMeta {
   due_time?: string | null;
 }
 
-const MIME_CANDIDATES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
-const EXT: Record<string, string> = { mp4: "m4a", webm: "webm", ogg: "ogg", mpeg: "mp3", wav: "wav" };
-
 // Poll fast while it is plausibly about to finish, then back off so a long
 // transcription does not hammer the row for half a minute.
 const POLL_FAST_MS = 1000;
@@ -47,11 +46,10 @@ const STALL_AFTER_MS = 45_000;
 
 export function CapturePanel({ domains, projects }: { domains: Domain[]; projects: Project[] }) {
   const supabase = useMemo(() => createClient(), []);
+  const recorder = useRecorder();
   const [phase, setPhase] = useState<Phase>("idle");
   const [mode, setMode] = useState<"voice" | "text">("voice");
   const [text, setText] = useState("");
-  const [elapsed, setElapsed] = useState(0);
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [captureId, setCaptureId] = useState<string | null>(null);
   const [row, setRow] = useState<CaptureRow | null>(null);
   const [meta, setMeta] = useState<Record<string, RowMeta>>({});
@@ -66,65 +64,18 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   const [tick, setTick] = useState(() => Date.now());
   const lastStatusRef = useRef<string | null>(null);
 
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
-
-  const teardown = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = null;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    void audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-    setAnalyser(null);
-  }, []);
-
-  useEffect(() => teardown, [teardown]);
-
   // ---- recording -----------------------------------------------------------
 
   const startRecording = async () => {
     setProblem(null);
     setOfflineNote(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const ctx = new AudioContext();
-      audioCtxRef.current = ctx;
-      const node = ctx.createAnalyser();
-      node.fftSize = 128;
-      ctx.createMediaStreamSource(stream).connect(node);
-      setAnalyser(node);
-
-      const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      chunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/mp4" });
-        teardown();
-        void sendAudio(blob);
-      };
-      recorderRef.current = recorder;
-      recorder.start();
-
-      setElapsed(0);
-      const started = Date.now();
-      timerRef.current = setInterval(() => setElapsed(Date.now() - started), 200);
-      setPhase("recording");
-    } catch {
-      teardown();
+    const ok = await recorder.start();
+    if (!ok) {
       setMode("text");
       setProblem("The microphone is not available. Type the capture instead.");
+      return;
     }
+    setPhase("recording");
   };
 
   /** Start the processing clock the progress strip reads from. */
@@ -136,43 +87,15 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     setTick(now);
   }, []);
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     setPhase("working");
     beginWork();
-    recorderRef.current?.stop();
-    recorderRef.current = null;
+    const blob = await recorder.stop();
+    if (blob && blob.size) void sendAudio(blob);
+    else setPhase("idle");
   };
 
   // ---- sending -------------------------------------------------------------
-
-  const uploadAudio = useCallback(
-    async (blob: Blob): Promise<string> => {
-      const subtype = (blob.type.split("/")[1] ?? "mp4").split(";")[0]!;
-      // Audio lives in the owner's own folder: the storage policy only allows
-      // a path whose first segment is the signed-in user's id.
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
-      if (!userId) throw new Error("Session expired. Sign in again.");
-      const path = `${userId}/${crypto.randomUUID()}.${EXT[subtype] ?? "m4a"}`;
-      const { error } = await supabase.storage
-        .from("captures")
-        .upload(path, blob, { contentType: blob.type || "audio/mp4", upsert: false });
-      if (error) throw new Error(error.message);
-      return path;
-    },
-    [supabase],
-  );
-
-  const postCapture = useCallback(async (body: Record<string, unknown>): Promise<string> => {
-    const res = await fetch("/api/capture", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = (await res.json()) as { captureId?: string; error?: string };
-    if (!res.ok || !json.captureId) throw new Error(json.error ?? "Capture failed to save.");
-    return json.captureId;
-  }, []);
 
   /** Park a capture the network refused, and say where it went. */
   const parkOffline = async (item: { source: string; text?: string; audio?: Blob }) => {
@@ -193,7 +116,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   const sendAudio = async (blob: Blob) => {
     const source = isPhone() ? "phone_voice" : "desktop_voice";
     try {
-      const path = await uploadAudio(blob);
+      const path = await uploadAudio(supabase, blob);
       const id = await postCapture({ audioPath: path, source });
       setCaptureId(id);
       setRow({ status: "transcribing", transcript: null, cleaned_text: null, result: null, error: null });
@@ -247,7 +170,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     for (const item of items) {
       try {
         if (item.audio) {
-          const path = await uploadAudio(item.audio);
+          const path = await uploadAudio(supabase, item.audio);
           await postCapture({ audioPath: path, source: item.source });
         } else if (item.text) {
           await postCapture({ text: item.text, source: item.source });
@@ -266,7 +189,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
 
     if (sent) setOfflineNote(`${sent} offline ${sent === 1 ? "capture" : "captures"} sent.`);
     if (rejected) setProblem(`An offline capture could not be filed: ${rejected}`);
-  }, [postCapture, uploadAudio]);
+  }, [supabase]);
 
   useEffect(() => {
     void flushQueue();
@@ -367,7 +290,6 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     setMeta({});
     setProblem(null);
     setOfflineNote(null);
-    setElapsed(0);
     setWorkStartedAt(null);
     setStatusChangedAt(null);
     lastStatusRef.current = null;
@@ -503,15 +425,15 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
         <div className="flex flex-1 flex-col items-center justify-end gap-0 pb-safe">
           <div className="w-full max-w-sm">
             <p className="tabular mb-4 text-center font-mono text-[13px] text-ink-2">
-              {phase === "recording" ? formatElapsed(elapsed) : "0:00"}
+              {phase === "recording" ? formatElapsed(recorder.elapsedMs) : "0:00"}
             </p>
-            <Waveform analyser={analyser} active={phase === "recording"} />
+            <Waveform analyser={recorder.analyser} active={phase === "recording"} />
           </div>
 
           <button
-            onClick={() => (phase === "recording" ? stopRecording() : void startRecording())}
+            onClick={() => (phase === "recording" ? void stopRecording() : void startRecording())}
             aria-label={phase === "recording" ? "Stop recording" : "Record"}
-            className="mt-10 flex size-24 items-center justify-center rounded-full bg-accent text-paper shadow-whisper transition-colors"
+            className="mt-10 flex size-24 items-center justify-center rounded-full bg-accent text-paper shadow-whisper transition-transform active:scale-95"
           >
             {phase === "recording" ? <Square className="size-7" /> : <Mic className="size-9" />}
           </button>
@@ -536,10 +458,3 @@ const LABELS: Record<string, string> = {
   routine_log: "Routine logged",
   person_update: "Person update",
 };
-
-function formatElapsed(ms: number): string {
-  const total = Math.floor(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}

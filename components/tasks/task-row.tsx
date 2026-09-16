@@ -147,11 +147,11 @@ export function TaskRow({
             type="button"
             aria-label={done ? `Reopen ${task.title}` : `Mark ${task.title} done`}
             onClick={done ? runReopen : runComplete}
-            className="flex size-11 shrink-0 items-center justify-center"
+            className="group/check flex size-11 shrink-0 items-center justify-center"
           >
             <span
               className={cn(
-                "flex size-5 items-center justify-center rounded-[6px] border-[1.5px] transition-colors",
+                "flex size-5 items-center justify-center rounded-[6px] border-[1.5px] transition-[color,background-color,border-color,transform] duration-150 group-active/check:scale-90",
                 done ? "border-ok bg-ok text-paper" : "border-ink-3",
               )}
             >

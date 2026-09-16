@@ -20,7 +20,8 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-4 text-[14px] font-medium transition-colors disabled:opacity-50",
+        // Every press gives back a 150ms scale dip — the app-wide tap feedback.
+        "inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-4 text-[14px] font-medium transition-[color,background-color,border-color,transform,opacity] duration-150 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100",
         styles[variant],
         className,
       )}

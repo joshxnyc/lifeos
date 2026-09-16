@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { refreshNotionVisibility, saveNotionConfig } from "@/app/(app)/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Mono, Panel, Row, SettingsSection, selectClass } from "@/components/settings/ui";
+import { RunJobButton } from "@/components/settings/run-job-button";
 import type { NotionConfig, NotionDatabaseConfig } from "@/lib/integrations/notion/config";
 import type { NotionDatabaseInfo } from "@/lib/integrations/notion/client";
 import type { ConnectedAccountSummary } from "@/lib/types";
@@ -92,8 +93,17 @@ export function NotionSection({
             {configured ? "Present" : "Missing"}
           </span>
         </Row>
-        {account?.last_synced_at ? (
-          <Row label="Last sync" hint={new Date(account.last_synced_at).toLocaleString()} />
+        {configured ? (
+          <Row
+            label="Last sync"
+            hint={
+              account?.last_synced_at
+                ? new Date(account.last_synced_at).toLocaleString()
+                : "Not synced yet. Sync now to test the connection."
+            }
+          >
+            <RunJobButton job="sync-notion" label="Sync now" />
+          </Row>
         ) : null}
         {draft.length ? (
           <Row

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BottomTabs } from "@/components/shell/bottom-tabs";
 import { Sidebar } from "@/components/shell/sidebar";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { GlobalRecord } from "@/components/capture/global-record";
 import type { Domain, Project } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <BottomTabs />
+      <GlobalRecord />
       <CommandPalette
         domains={(domains ?? []) as Domain[]}
         projects={(projects ?? []) as Project[]}

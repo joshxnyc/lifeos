@@ -17,8 +17,12 @@ import {
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { requestRecord } from "@/components/capture/global-record";
 
 const moreLinks = [
+  // The mic button records in place, so the full capture screen (text mode,
+  // history, retries) lives here.
+  { href: "/capture", label: "Capture screen", icon: Mic },
   { href: "/queue", label: "Queue", icon: Inbox },
   { href: "/people", label: "People", icon: Users },
   { href: "/notes", label: "Notes", icon: StickyNote },
@@ -53,9 +57,12 @@ export function BottomTabs() {
   return (
     <>
       {moreOpen ? (
-        <div className="fixed inset-0 z-40 bg-ink/20 md:hidden" onClick={() => setMoreOpen(false)}>
+        <div
+          className="animate-fade-in fixed inset-0 z-40 bg-ink/20 md:hidden"
+          onClick={() => setMoreOpen(false)}
+        >
           <div
-            className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper p-4 pb-safe shadow-whisper"
+            className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper p-4 pb-safe shadow-whisper"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Canvas 2b: a grab handle over a plain hairline-separated list,
@@ -81,13 +88,18 @@ export function BottomTabs() {
         <div className="flex items-end">
           {tab("/today", "Today", CalendarCheck)}
           {tab("/tasks", "Tasks", ListChecks)}
-          <Link
-            href="/capture"
-            aria-label="Capture"
-            className="relative -top-[22px] mx-auto flex size-14 items-center justify-center rounded-full bg-accent text-paper shadow-whisper"
+          {/* Records in place over whatever page is open — no navigation. */}
+          <button
+            type="button"
+            onClick={() => {
+              setMoreOpen(false);
+              requestRecord();
+            }}
+            aria-label="Record a capture"
+            className="relative -top-[22px] mx-auto flex size-14 items-center justify-center rounded-full bg-accent text-paper shadow-whisper transition-transform active:scale-95"
           >
             <Mic size={24} />
-          </Link>
+          </button>
           {tab("/routines", "Routines", Repeat)}
           <button
             onClick={() => setMoreOpen((v) => !v)}

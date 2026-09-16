@@ -11,6 +11,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/components/tasks/toast";
+import { isPhone, postCapture } from "@/components/capture/send";
+import { waitForCaptureRow } from "@/components/capture/wait";
 import type { CaptureResult } from "@/lib/types";
 
 /** Typed captures are filed inline by the route, so this rarely loops twice. */
@@ -43,12 +45,6 @@ export function summarizeCapture(result: CaptureResult | null): string {
   return `Added ${list}`;
 }
 
-interface CaptureRow {
-  status: string;
-  result: CaptureResult | null;
-  error: string | null;
-}
-
 export function useSmartAdd() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -63,19 +59,13 @@ export function useSmartAdd() {
       inFlight.current = true;
       setWorking(true);
       try {
-        const source =
-          typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches
-            ? "phone_text"
-            : "desktop_text";
-        const res = await fetch("/api/capture", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text, source }),
-        });
-        const json = (await res.json()) as { captureId?: string; error?: string };
-        if (!res.ok || !json.captureId) throw new Error(json.error ?? "That could not be saved.");
+        const source = isPhone() ? "phone_text" : "desktop_text";
+        const captureId = await postCapture({ text, source });
 
-        const row = await waitForCapture(supabase, json.captureId);
+        const row = await waitForCaptureRow(supabase, captureId, {
+          pollMs: POLL_MS,
+          maxWaitMs: MAX_WAIT_MS,
+        });
         router.refresh();
         if (!row) {
           // Still filing after 30s: the job route finishes it either way.
@@ -102,22 +92,4 @@ export function useSmartAdd() {
   );
 
   return { smartAdd, working };
-}
-
-async function waitForCapture(
-  supabase: ReturnType<typeof createClient>,
-  captureId: string,
-): Promise<CaptureRow | null> {
-  const deadline = Date.now() + MAX_WAIT_MS;
-  for (;;) {
-    const { data } = await supabase
-      .from("captures")
-      .select("status, result, error")
-      .eq("id", captureId)
-      .single();
-    const row = data as CaptureRow | null;
-    if (row && (row.status === "done" || row.status === "failed")) return row;
-    if (Date.now() + POLL_MS > deadline) return null;
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
 }
