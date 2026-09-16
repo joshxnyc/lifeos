@@ -16,10 +16,17 @@ export function FilingDot({ className }: { className?: string }) {
   );
 }
 
-export function FilingIndicator({ label = "Filing…" }: { label?: string }) {
+export function FilingIndicator({
+  label = "Filing…",
+  dotClassName,
+}: {
+  label?: string;
+  /** Recolour the dot when it sits on a non-paper surface (e.g. the accent Add pill). */
+  dotClassName?: string;
+}) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <FilingDot />
+      <FilingDot className={dotClassName} />
       {label}
     </span>
   );

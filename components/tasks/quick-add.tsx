@@ -3,10 +3,10 @@
 // Quick-add field (SPEC §9). Parsing is pure and lives in lib/domain/quick-add
 // (workstream D); this component only renders the live preview and writes.
 //
-// Two ways out of the same field: Add (Enter) is the instant, deterministic
-// token parse; Smart add hands the raw sentence to the capture pipeline, which
-// splits several to-dos and reads dates, priorities and people out of plain
-// English. Enter and ⌘⏎ both stay on the fast path.
+// Two ways out of the same field: Add (Enter) hands the raw sentence to the
+// capture pipeline, which splits several to-dos and reads dates, priorities
+// and people out of plain English. "Add as typed" (⌘⏎) is the instant,
+// deterministic token parse for when the AI round-trip isn't wanted.
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { parseQuickAdd, type QuickAddResult } from "@/lib/domain/quick-add";
@@ -93,7 +93,7 @@ export function QuickAdd({
   initialValue = "",
   autoFocus = false,
   showSmartHint = false,
-  placeholder = 'Add a task — "Send memo to Bernhard fri #tarifa !high"',
+  placeholder = 'Add a task — "Make chicken katsu today, high priority, before noon"',
 }: {
   domains: DomainOption[];
   projects: ProjectOption[];
@@ -103,7 +103,7 @@ export function QuickAdd({
   defaultProjectId?: string;
   initialValue?: string;
   autoFocus?: boolean;
-  /** One line under the field explaining Smart add. On the Tasks screen only. */
+  /** One line under the field explaining the smart Add. On the Tasks screen only. */
   showSmartHint?: boolean;
   placeholder?: string;
 }) {
@@ -163,11 +163,11 @@ export function QuickAdd({
           autoFocus={autoFocus}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            // Enter and ⌘⏎ both stay on the instant deterministic parse;
-            // Smart add is a deliberate second action.
+            // Enter is the smart path; ⌘⏎ is the instant deterministic parse.
             if (e.key === "Enter") {
               e.preventDefault();
-              submit();
+              if (e.metaKey || e.ctrlKey) submit();
+              else submitSmart();
             }
             if (e.key === "Escape") setValue("");
           }}
@@ -177,20 +177,21 @@ export function QuickAdd({
         />
         <button
           type="button"
-          onClick={submitSmart}
-          disabled={!value.trim() || working}
-          aria-label="Smart add with AI"
+          onClick={submit}
+          disabled={!parsed.title.trim() || pending}
+          aria-label="Add exactly as typed, without AI"
           className="h-11 shrink-0 whitespace-nowrap px-2 text-[14px] font-medium text-accent disabled:opacity-40"
         >
-          {working ? <FilingIndicator /> : "Smart add"}
+          As typed
         </button>
         <button
           type="button"
-          onClick={submit}
-          disabled={!parsed.title.trim() || pending}
+          onClick={submitSmart}
+          disabled={!value.trim() || working}
+          aria-label="Add task"
           className="h-11 shrink-0 rounded-full bg-accent px-4 text-[14px] font-medium text-paper disabled:opacity-40"
         >
-          Add
+          {working ? <FilingIndicator dotClassName="bg-paper" /> : "Add"}
         </button>
       </div>
       {value.trim() ? (
@@ -207,7 +208,8 @@ export function QuickAdd({
       ) : null}
       {showSmartHint ? (
         <p className="text-[13px] text-ink-2">
-          Smart add splits several to-dos and understands dates, priorities and people.
+          Add understands plain English: several to-dos, dates, priorities and people. ⌘⏎ adds
+          exactly as typed.
         </p>
       ) : null}
     </div>

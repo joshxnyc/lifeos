@@ -73,7 +73,7 @@ export function useSmartAdd() {
           body: JSON.stringify({ text, source }),
         });
         const json = (await res.json()) as { captureId?: string; error?: string };
-        if (!res.ok || !json.captureId) throw new Error(json.error ?? "Smart add failed to save.");
+        if (!res.ok || !json.captureId) throw new Error(json.error ?? "That could not be saved.");
 
         const row = await waitForCapture(supabase, json.captureId);
         router.refresh();
@@ -83,7 +83,7 @@ export function useSmartAdd() {
           return true;
         }
         if (row.status === "failed") {
-          toast(row.error ?? "Smart add could not file that.");
+          toast(row.error ?? "That could not be filed.");
           return false;
         }
         const summary = summarizeCapture(row.result);
@@ -91,7 +91,7 @@ export function useSmartAdd() {
         toast(clarification ? `${summary}. ${clarification}` : summary);
         return true;
       } catch (err) {
-        toast(err instanceof Error ? err.message : "Smart add failed. Try again.");
+        toast(err instanceof Error ? err.message : "Adding failed. Try again.");
         return false;
       } finally {
         inFlight.current = false;

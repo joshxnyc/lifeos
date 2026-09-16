@@ -164,15 +164,15 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                 autoFocus
                 value={query}
                 onValueChange={setQuery}
-                placeholder='Search, or add: "Send memo to Bernhard fri #tarifa !high"'
+                placeholder='Search, or add: "Send memo to Bernhard Friday, high priority"'
                 className="h-14 w-full border-b border-line bg-transparent px-[18px] text-[17px] outline-none placeholder:text-ink-3"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setOpen(false);
-                  // ⌘⏎ adds the parsed task without having to walk the list to
-                  // the "Add task" row; plain ⏎ still runs whatever is selected.
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && parsed.title.trim()) {
+                  // ⌘⏎ smart-adds without having to walk the list to the
+                  // "Add" row; plain ⏎ still runs whatever is selected.
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && query.trim()) {
                     e.preventDefault();
-                    add();
+                    addSmart();
                   }
                 }}
               />
@@ -183,10 +183,10 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                     <p className="section-label">Create task</p>
                     <button
                       type="button"
-                      onClick={addSmart}
+                      onClick={add}
                       className="-my-2 h-11 shrink-0 whitespace-nowrap px-1 text-[13px] font-medium text-accent"
                     >
-                      Smart add
+                      Add as typed
                     </button>
                   </div>
                   <p className="mt-1.5 truncate text-[15px] font-medium text-ink">
@@ -204,13 +204,13 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
               ) : null}
               <Command.List className="max-h-72 overflow-y-auto py-2">
                 {query.trim() ? (
-                  <Command.Item value={`add ${query}`} onSelect={add} className={ITEM_CLASS}>
-                    Add task: “{parsed.title || query}”
+                  <Command.Item value={`add ${query}`} onSelect={addSmart} className={ITEM_CLASS}>
+                    Add: “{query}” — AI splits to-dos and reads dates
                   </Command.Item>
                 ) : null}
                 {query.trim() ? (
-                  <Command.Item value={`smart add ${query}`} onSelect={addSmart} className={ITEM_CLASS}>
-                    Smart add: let AI split and date “{query}”
+                  <Command.Item value={`add as typed ${query}`} onSelect={add} className={ITEM_CLASS}>
+                    Add exactly as typed: “{parsed.title || query}”
                   </Command.Item>
                 ) : null}
                 {query.trim() ? (
@@ -262,7 +262,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                   hairline. ink-2 because both carry information (§8). */}
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-[18px] py-2 text-[11px] text-ink-2">
                 <span className="font-mono">#domain/project · @person · !priority · ~date</span>
-                <span className="font-mono">↑↓ move · ⏎ open · ⌘⏎ add task · esc close</span>
+                <span className="font-mono">↑↓ move · ⏎ open · ⌘⏎ add · esc close</span>
               </div>
             </Command>
           </div>
