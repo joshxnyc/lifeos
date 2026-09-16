@@ -2,11 +2,18 @@
 
 // Quick-add field (SPEC §9). Parsing is pure and lives in lib/domain/quick-add
 // (workstream D); this component only renders the live preview and writes.
+//
+// Two ways out of the same field: Add (Enter) is the instant, deterministic
+// token parse; Smart add hands the raw sentence to the capture pipeline, which
+// splits several to-dos and reads dates, priorities and people out of plain
+// English. Enter and ⌘⏎ both stay on the fast path.
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { parseQuickAdd, type QuickAddResult } from "@/lib/domain/quick-add";
 import { createTask } from "@/app/(app)/tasks/actions";
 import { toast } from "@/components/tasks/toast";
+import { useSmartAdd } from "@/components/capture/use-smart-add";
+import { FilingIndicator } from "@/components/capture/filing-indicator";
 import { formatClock, relativeDayLabel, PRIORITY_LABEL } from "@/components/tasks/format";
 import { cn } from "@/lib/utils";
 import type { DomainOption, PersonOption, ProjectOption } from "@/components/tasks/types";
@@ -85,6 +92,7 @@ export function QuickAdd({
   defaultProjectId,
   initialValue = "",
   autoFocus = false,
+  showSmartHint = false,
   placeholder = 'Add a task — "Send memo to Bernhard fri #tarifa !high"',
 }: {
   domains: DomainOption[];
@@ -95,10 +103,13 @@ export function QuickAdd({
   defaultProjectId?: string;
   initialValue?: string;
   autoFocus?: boolean;
+  /** One line under the field explaining Smart add. On the Tasks screen only. */
+  showSmartHint?: boolean;
   placeholder?: string;
 }) {
   const [value, setValue] = useState(initialValue);
   const [pending, startTransition] = useTransition();
+  const { smartAdd, working } = useSmartAdd();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const parsed = useMemo(
@@ -132,15 +143,24 @@ export function QuickAdd({
     });
   }
 
+  function submitSmart() {
+    const raw = value.trim();
+    if (!raw || working) return;
+    setValue("");
+    void smartAdd(raw).then(() => inputRef.current?.focus());
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <input
           ref={inputRef}
           value={value}
           autoFocus={autoFocus}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
+            // Enter and ⌘⏎ both stay on the instant deterministic parse;
+            // Smart add is a deliberate second action.
             if (e.key === "Enter") {
               e.preventDefault();
               submit();
@@ -151,6 +171,15 @@ export function QuickAdd({
           aria-label="Quick add a task"
           className="h-11 min-w-0 flex-1 rounded-card bg-paper-2 px-3.5 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:ring-1 focus:ring-accent"
         />
+        <button
+          type="button"
+          onClick={submitSmart}
+          disabled={!value.trim() || working}
+          aria-label="Smart add with AI"
+          className="h-11 shrink-0 whitespace-nowrap px-2 text-[14px] font-medium text-accent disabled:opacity-40"
+        >
+          {working ? <FilingIndicator /> : "Smart add"}
+        </button>
         <button
           type="button"
           onClick={submit}
@@ -171,6 +200,11 @@ export function QuickAdd({
             today={today}
           />
         </div>
+      ) : null}
+      {showSmartHint ? (
+        <p className="text-[13px] text-ink-2">
+          Smart add splits several to-dos and understands dates, priorities and people.
+        </p>
       ) : null}
     </div>
   );

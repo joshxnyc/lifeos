@@ -110,6 +110,9 @@ export interface CaptureResult {
     id?: string;
     title?: string;
     detail?: string;
+    /** Model's estimate of active time, in whole minutes. Tasks/reminders only.
+     *  Becomes the calendar block length once Google calendar write is wired. */
+    duration_minutes?: number;
   }>;
   needs_clarification?: string;
 }

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { DomainChip } from "@/components/ui/domain";
 import { Waveform } from "@/components/capture/waveform";
+import { CaptureProgress } from "@/components/capture/progress-steps";
 import { undoCaptureItem } from "@/app/(app)/capture/actions";
 import {
   isNetworkError,
@@ -36,6 +37,14 @@ interface RowMeta {
 const MIME_CANDIDATES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
 const EXT: Record<string, string> = { mp4: "m4a", webm: "webm", ogg: "ogg", mpeg: "mp3", wav: "wav" };
 
+// Poll fast while it is plausibly about to finish, then back off so a long
+// transcription does not hammer the row for half a minute.
+const POLL_FAST_MS = 1000;
+const POLL_SLOW_MS = 2500;
+const POLL_BACKOFF_AFTER_MS = 10_000;
+/** No status change for this long: say so, and stop implying it is stuck. */
+const STALL_AFTER_MS = 45_000;
+
 export function CapturePanel({ domains, projects }: { domains: Domain[]; projects: Project[] }) {
   const supabase = useMemo(() => createClient(), []);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -49,6 +58,13 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   const [problem, setProblem] = useState<string | null>(null);
   const [offlineNote, setOfflineNote] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  // Processing clock: when work started, when the status last moved, and a
+  // once-a-second tick so both read as live without touching the poll loop.
+  const [workStartedAt, setWorkStartedAt] = useState<number | null>(null);
+  const [statusChangedAt, setStatusChangedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(() => Date.now());
+  const lastStatusRef = useRef<string | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -111,8 +127,18 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     }
   };
 
+  /** Start the processing clock the progress strip reads from. */
+  const beginWork = useCallback(() => {
+    const now = Date.now();
+    lastStatusRef.current = null;
+    setWorkStartedAt(now);
+    setStatusChangedAt(now);
+    setTick(now);
+  }, []);
+
   const stopRecording = () => {
     setPhase("working");
+    beginWork();
     recorderRef.current?.stop();
     recorderRef.current = null;
   };
@@ -186,6 +212,7 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     if (!value) return;
     const source = isPhone() ? "phone_text" : "desktop_text";
     setPhase("working");
+    beginWork();
     setRow({ status: "filing", transcript: value, cleaned_text: value, result: null, error: null });
     try {
       const id = await postCapture({ text: value, source });
@@ -253,6 +280,8 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   useEffect(() => {
     if (!captureId || phase === "result") return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
 
     const poll = async () => {
       const { data } = await supabase
@@ -260,21 +289,38 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
         .select("status, transcript, cleaned_text, result, error")
         .eq("id", captureId)
         .single();
-      if (cancelled || !data) return;
-      setRow(data as CaptureRow);
-      if (data.status === "done" || data.status === "failed") {
-        setPhase("result");
-        if (data.status === "done") void loadMeta(data.result as CaptureResult | null);
+      if (cancelled) return;
+      if (data) {
+        setRow(data as CaptureRow);
+        const status = data.status as string;
+        if (status !== lastStatusRef.current) {
+          lastStatusRef.current = status;
+          setStatusChangedAt(Date.now());
+        }
+        if (status === "done" || status === "failed") {
+          setPhase("result");
+          if (status === "done") void loadMeta(data.result as CaptureResult | null);
+          return;
+        }
       }
+      const delay = Date.now() - startedAt < POLL_BACKOFF_AFTER_MS ? POLL_FAST_MS : POLL_SLOW_MS;
+      timer = setTimeout(() => void poll(), delay);
     };
 
     void poll();
-    const id = setInterval(poll, 1500);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (timer) clearTimeout(timer);
     };
   }, [captureId, phase, supabase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once-a-second re-render so the elapsed count and the 45-second note move.
+  useEffect(() => {
+    if (!workStartedAt || phase === "idle" || phase === "recording") return;
+    if (row?.status === "done" || row?.status === "failed") return;
+    const id = setInterval(() => setTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [workStartedAt, phase, row?.status]);
 
   const loadMeta = async (result: CaptureResult | null) => {
     const taskIds = (result?.items ?? [])
@@ -322,6 +368,9 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
     setProblem(null);
     setOfflineNote(null);
     setElapsed(0);
+    setWorkStartedAt(null);
+    setStatusChangedAt(null);
+    lastStatusRef.current = null;
   };
 
   const fixHref = (result: CaptureResult | null): string => {
@@ -337,6 +386,8 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
   if (phase === "working" || phase === "result") {
     const result = row?.result ?? null;
     const filing = row?.status !== "done" && row?.status !== "failed";
+    const workElapsed = workStartedAt ? Math.max(0, Math.round((tick - workStartedAt) / 1000)) : 0;
+    const stalled = filing && statusChangedAt !== null && tick - statusChangedAt > STALL_AFTER_MS;
     return (
       <div className="flex flex-col gap-6 pb-10">
         <section>
@@ -347,11 +398,8 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
               ? `\u201C${row?.cleaned_text || row?.transcript}\u201D`
               : "Listening back…"}
           </p>
-          {filing ? (
-            <p className="mt-3 flex items-center gap-2 text-[13px] text-ink-2">
-              <span className="size-1.5 rounded-full bg-ink-3" aria-hidden />
-              Filing
-            </p>
+          {row?.status !== "failed" ? (
+            <CaptureProgress status={row?.status} elapsedSeconds={workElapsed} stalled={stalled} />
           ) : null}
         </section>
 

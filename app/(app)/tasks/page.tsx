@@ -104,6 +104,7 @@ export default async function TasksPage({
           defaultDomainId={activeDomain?.id}
           initialValue={prefill}
           autoFocus={Boolean(prefill)}
+          showSmartHint
         />
         <TaskFilters domains={domains} query={query} />
       </div>

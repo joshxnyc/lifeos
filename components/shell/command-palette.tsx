@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { createTask } from "@/app/(app)/tasks/actions";
 import { ParsedChips, parseSafely } from "@/components/tasks/quick-add";
 import { ToastHost, toast } from "@/components/tasks/toast";
+import { useSmartAdd } from "@/components/capture/use-smart-add";
 import type { Domain, Project } from "@/lib/types";
 import type { PersonOption } from "@/components/tasks/types";
 
@@ -54,6 +55,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
   );
   const [loaded, setLoaded] = useState(false);
   const [, startTransition] = useTransition();
+  const { smartAdd } = useSmartAdd();
   const router = useRouter();
 
   useEffect(() => {
@@ -136,6 +138,18 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
     });
   };
 
+  // Smart add closes the palette straight away and reports through the toast,
+  // so a sentence with several to-dos in it does not hold the palette open
+  // while the capture pipeline files it.
+  const addSmart = () => {
+    const raw = query.trim();
+    if (!raw) return;
+    setOpen(false);
+    setQuery("");
+    toast("Filing…");
+    void smartAdd(raw);
+  };
+
   return (
     <>
       <ToastHost />
@@ -165,7 +179,16 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
               {query.trim() ? (
                 // Canvas 2j: the parse preview sits on the raised surface.
                 <div className="border-b border-line bg-raise px-[18px] py-3">
-                  <p className="section-label">Create task</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="section-label">Create task</p>
+                    <button
+                      type="button"
+                      onClick={addSmart}
+                      className="-my-2 h-11 shrink-0 whitespace-nowrap px-1 text-[13px] font-medium text-accent"
+                    >
+                      Smart add
+                    </button>
+                  </div>
                   <p className="mt-1.5 truncate text-[15px] font-medium text-ink">
                     {parsed.title || "…"}
                   </p>
@@ -183,6 +206,11 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                 {query.trim() ? (
                   <Command.Item value={`add ${query}`} onSelect={add} className={ITEM_CLASS}>
                     Add task: “{parsed.title || query}”
+                  </Command.Item>
+                ) : null}
+                {query.trim() ? (
+                  <Command.Item value={`smart add ${query}`} onSelect={addSmart} className={ITEM_CLASS}>
+                    Smart add: let AI split and date “{query}”
                   </Command.Item>
                 ) : null}
                 {query.trim() ? (

@@ -18,6 +18,9 @@ import type { Capture, CaptureResult } from "@/lib/types";
 
 const NULLABLE_STRING = { type: ["string", "null"] } as const;
 
+/** Transcripts shorter than this skip the cleanup pass — see step 2 below. */
+const CLEANUP_MIN_CHARS = 240;
+
 /** The §7.1 output schema, flattened so Anthropic strict tool use accepts it. */
 export const FILE_CAPTURE_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -45,6 +48,7 @@ export const FILE_CAPTURE_SCHEMA: Record<string, unknown> = {
           "routine_status",
           "fact",
           "new_person",
+          "duration_minutes",
         ],
         properties: {
           type: {
@@ -59,6 +63,11 @@ export const FILE_CAPTURE_SCHEMA: Record<string, unknown> = {
           due_date: { ...NULLABLE_STRING, description: "YYYY-MM-DD, resolved against today." },
           due_time: { ...NULLABLE_STRING, description: "HH:mm, 24-hour, or null." },
           priority: { type: ["integer", "null"], description: "0 none, 1 low, 2 medium, 3 high." },
+          duration_minutes: {
+            type: ["integer", "null"],
+            description:
+              "task/reminder only: realistic estimate of active time in whole minutes when the activity has a natural length, else null.",
+          },
           routine_id: { ...NULLABLE_STRING, description: "routine_log only: routine id from the context." },
           routine_date: { ...NULLABLE_STRING, description: "routine_log only: YYYY-MM-DD." },
           routine_status: {
@@ -97,6 +106,7 @@ interface FiledItemInput {
   due_date: string | null;
   due_time: string | null;
   priority: number | null;
+  duration_minutes: number | null;
   routine_id: string | null;
   routine_date: string | null;
   routine_status: "done" | "skipped" | null;
@@ -143,11 +153,18 @@ export async function processCapture(
       return;
     }
 
-    // 2. Cheap cleanup pass — voice only. Typed captures are already Joshua's
-    //    exact words, so cleaning them would only risk changing them.
+    // 2. Cheap cleanup pass — long voice transcripts only.
+    //
+    //    Typed captures are already Joshua's exact words, so cleaning them
+    //    would only risk changing them. Short clips are skipped too (added
+    //    2026-09-16 for perceived speed): cleanup is a whole extra LLM
+    //    round-trip, and on a one-or-two-sentence clip it saves the filing
+    //    pass nothing — that prompt already tolerates filler and false
+    //    starts. Only a long ramble is worth tidying first.
     let cleaned = capture.cleaned_text ?? null;
     if (!cleaned) {
-      cleaned = capture.audio_path
+      const worthCleaning = Boolean(capture.audio_path) && transcript.trim().length >= CLEANUP_MIN_CHARS;
+      cleaned = worthCleaning
         ? (
             await callText({
               pipeline: "clean-transcript",
@@ -291,6 +308,10 @@ async function createRows(
     if (item.type === "task" || item.type === "reminder") {
       const title = item.title?.trim();
       if (!title) continue;
+      // There is no duration column yet, so the estimate rides along in the
+      // body and in captures.result — enough for the calendar block length to
+      // read it once Google write lands.
+      const durationMinutes = normalizeDuration(item.duration_minutes);
       const { data: task } = await supabase
         .from("tasks")
         .insert({
@@ -299,7 +320,7 @@ async function createRows(
           project_id: projectId,
           person_id: personId,
           title,
-          body_md: item.body_md?.trim() || null,
+          body_md: withEstimate(item.body_md, durationMinutes),
           due_date: item.due_date || null,
           due_time: item.due_time || null,
           priority: clampPriority(item.priority),
@@ -314,7 +335,8 @@ async function createRows(
           type: item.type,
           id: task.id as string,
           title,
-          detail: dueLabel(item.due_date, item.due_time) ?? undefined,
+          detail: detailLabel(item.due_date, item.due_time, durationMinutes) ?? undefined,
+          ...(durationMinutes ? { duration_minutes: durationMinutes } : {}),
         });
       }
       continue;
@@ -442,7 +464,23 @@ function firstLine(text: string | null): string | null {
   return line ? line.replace(/^#+\s*/, "").trim().slice(0, 80) : null;
 }
 
-function dueLabel(date: string | null, time: string | null): string | null {
-  if (!date) return null;
-  return time ? `due ${date} at ${time}` : `due ${date}`;
+/** Whole minutes inside a plausible range, or null. A day is the ceiling. */
+function normalizeDuration(value: number | null): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const minutes = Math.round(value);
+  if (minutes < 1 || minutes > 1440) return null;
+  return minutes;
+}
+
+/** The estimate as the body's last line, so it survives into the task detail. */
+function withEstimate(body: string | null, minutes: number | null): string | null {
+  const text = body?.trim() || "";
+  if (!minutes) return text || null;
+  return text ? `${text}\n\nEstimated: ${minutes} min` : `Estimated: ${minutes} min`;
+}
+
+function detailLabel(date: string | null, time: string | null, minutes: number | null): string | null {
+  const due = date ? (time ? `due ${date} at ${time}` : `due ${date}`) : null;
+  const estimate = minutes ? `${minutes} min` : null;
+  return [due, estimate].filter(Boolean).join(" · ") || null;
 }
