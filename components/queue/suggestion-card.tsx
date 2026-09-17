@@ -62,6 +62,21 @@ export function SuggestionCard(props: SuggestionCardProps) {
     setEdited((prev) => ({ ...prev, [key]: value }));
   }
 
+  function runUndo(action: "accept" | "dismiss") {
+    const revert = action === "accept" ? undoAcceptSuggestion : undoDismissSuggestion;
+    void revert(props.id)
+      .then(() => {
+        // If this card is still mounted, put it straight back; either way the
+        // refresh brings the pending suggestion back into the queue.
+        setResolved(null);
+        setDx(0);
+        router.refresh();
+      })
+      .catch((err) => {
+        toast(err instanceof Error ? err.message : "That undo didn't work.");
+      });
+  }
+
   function run(action: "accept" | "dismiss") {
     setError(null);
     startTransition(async () => {
@@ -69,6 +84,10 @@ export function SuggestionCard(props: SuggestionCardProps) {
         if (action === "accept") await acceptSuggestion(props.id, edited);
         else await dismissSuggestion(props.id);
         setResolved(action === "accept" ? "accepted" : "dismissed");
+        toast(action === "accept" ? "Accepted" : "Dismissed", {
+          label: "Undo",
+          onPress: () => runUndo(action),
+        });
         router.refresh();
       } catch (err) {
         setDx(0);
@@ -109,21 +128,35 @@ export function SuggestionCard(props: SuggestionCardProps) {
           pending && "opacity-60",
         )}
         onPointerDown={(e) => {
-          if ((e.target as HTMLElement).closest("select, input, button, a")) return;
-          startX.current = e.clientX;
-          setDragging(true);
+          if ((e.target as HTMLElement).closest("select, input, textarea, button, a")) return;
+          start.current = { x: e.clientX, y: e.clientY };
+          axis.current = "none";
         }}
         onPointerMove={(e) => {
-          if (!dragging) return;
-          setDx(e.clientX - startX.current);
+          const s = start.current;
+          if (!s) return;
+          const ddx = e.clientX - s.x;
+          const ddy = e.clientY - s.y;
+          if (axis.current === "none") {
+            if (Math.abs(ddx) < 10 && Math.abs(ddy) < 10) return;
+            axis.current = Math.abs(ddx) > Math.abs(ddy) ? "x" : "y";
+          }
+          if (axis.current !== "x") return;
+          setDragging(true);
+          setDx(ddx);
         }}
         onPointerUp={() => {
+          const travelled = axis.current === "x" ? dx : 0;
+          start.current = null;
+          axis.current = "none";
           setDragging(false);
-          if (dx > SWIPE_THRESHOLD) run("accept");
-          else if (dx < -SWIPE_THRESHOLD) run("dismiss");
+          if (travelled > SWIPE_THRESHOLD) run("accept");
+          else if (travelled < -SWIPE_THRESHOLD) run("dismiss");
           else setDx(0);
         }}
         onPointerCancel={() => {
+          start.current = null;
+          axis.current = "none";
           setDragging(false);
           setDx(0);
         }}

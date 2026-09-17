@@ -6,9 +6,15 @@ import { Mic, Square } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { DomainChip } from "@/components/ui/domain";
+import { toast } from "@/components/tasks/toast";
 import { Waveform } from "@/components/capture/waveform";
 import { CaptureProgress } from "@/components/capture/progress-steps";
-import { formatElapsed, useRecorder } from "@/components/capture/use-recorder";
+import {
+  formatElapsed,
+  RECORDING_COUNTDOWN_FROM_MS,
+  RECORDING_LIMIT_MS,
+  useRecorder,
+} from "@/components/capture/use-recorder";
 import { isPhone, postCapture, uploadAudio } from "@/components/capture/send";
 import { undoCaptureItem } from "@/app/(app)/capture/actions";
 import {
@@ -45,13 +51,30 @@ const POLL_BACKOFF_AFTER_MS = 10_000;
 /** No status change for this long: say so, and stop implying it is stuck. */
 const STALL_AFTER_MS = 45_000;
 
-export function CapturePanel({ domains, projects }: { domains: Domain[]; projects: Project[] }) {
+export function CapturePanel({
+  domains,
+  projects,
+  initialCaptureId = null,
+}: {
+  domains: Domain[];
+  projects: Project[];
+  /** ?capture=<id>: hydrate straight into that capture's result view (the
+   * "Review" action on the global record sheet's toast lands here). */
+  initialCaptureId?: string | null;
+}) {
   const supabase = useMemo(() => createClient(), []);
-  const recorder = useRecorder();
-  const [phase, setPhase] = useState<Phase>("idle");
+  // The 5 minute ceiling flows through the same stopRecording() as a tap on
+  // the stop button, so the audio is uploaded and filed — never discarded.
+  const recorder = useRecorder({
+    onAutoStop: () => {
+      toast("Recording hit the 5 minute limit. Filed what was captured.");
+      void stopRecording();
+    },
+  });
+  const [phase, setPhase] = useState<Phase>(initialCaptureId ? "working" : "idle");
   const [mode, setMode] = useState<"voice" | "text">("voice");
   const [text, setText] = useState("");
-  const [captureId, setCaptureId] = useState<string | null>(null);
+  const [captureId, setCaptureId] = useState<string | null>(initialCaptureId);
   const [row, setRow] = useState<CaptureRow | null>(null);
   const [meta, setMeta] = useState<Record<string, RowMeta>>({});
   const [problem, setProblem] = useState<string | null>(null);
@@ -60,8 +83,12 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
 
   // Processing clock: when work started, when the status last moved, and a
   // once-a-second tick so both read as live without touching the poll loop.
-  const [workStartedAt, setWorkStartedAt] = useState<number | null>(null);
-  const [statusChangedAt, setStatusChangedAt] = useState<number | null>(null);
+  const [workStartedAt, setWorkStartedAt] = useState<number | null>(() =>
+    initialCaptureId ? Date.now() : null,
+  );
+  const [statusChangedAt, setStatusChangedAt] = useState<number | null>(() =>
+    initialCaptureId ? Date.now() : null,
+  );
   const [tick, setTick] = useState(() => Date.now());
   const lastStatusRef = useRef<string | null>(null);
 
