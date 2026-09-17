@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { localDate } from "@/lib/time";
-import type { ProjectStatus, Suggestion, SuggestionProposed } from "@/lib/types";
+import type { DismissedReason, ProjectStatus, Suggestion, SuggestionProposed } from "@/lib/types";
 
 // SPEC §7.2 queue actions. Accept creates the row the suggestion proposed
 // (editable inline before accepting) and links it back to the source item;
@@ -33,6 +33,10 @@ interface AcceptUndo {
 }
 
 type StoredProposed = SuggestionProposed & { _undo?: AcceptUndo };
+
+/** Same shape the rest of the codebase uses: errors travel as values, never
+ * as thrown messages (Next.js masks thrown messages in production). */
+export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const editedSchema = z
   .object({

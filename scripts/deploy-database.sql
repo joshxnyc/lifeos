@@ -655,3 +655,14 @@ where provider = 'google'
 -- ---------------------------------------------------------------------------
 alter table public.tasks add column if not exists duration_minutes integer
   check (duration_minutes between 1 and 1440);
+
+-- ---------------------------------------------------------------------------
+-- 2026-09-17: suggestions.dismissed_reason — the optional one-tap reason after
+-- a dismiss (not a task / done already / not mine / wrong details). Null when
+-- Joshua didn't say. Recent reasons are fed back into the extraction prompt so
+-- dismissals teach the extractor. Standalone block, safe to run twice
+-- (`if not exists` skips the re-add, so the CHECK is only created once).
+-- Mirrors supabase/migrations/20260917000009_dismissal_reasons.sql.
+-- ---------------------------------------------------------------------------
+alter table public.suggestions add column if not exists dismissed_reason text
+  check (dismissed_reason in ('not_a_task', 'already_done', 'not_mine', 'wrong_details', 'other'));

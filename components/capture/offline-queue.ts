@@ -105,16 +105,27 @@ export async function countQueued(): Promise<number> {
 }
 
 /**
- * One flusher at a time per tab. Both the shell (app-lifecycle) and the
- * capture screen replay this queue; navigating to /capture while a shell
- * flush is mid-flight would otherwise list the same items again and send
- * them twice. Returns null when another flush already holds the lock.
+ * One flusher at a time — across tabs, not just within one. Both the shell
+ * (app-lifecycle) and the capture screen replay this queue, and two open tabs
+ * share the same IndexedDB, so without a cross-tab lock both could list the
+ * same items and send them twice. The Web Locks API (Safari 15.4+/Chrome 69+)
+ * gives an origin-wide mutex; `ifAvailable` skips instead of queueing, since
+ * whichever holder finishes will have drained the queue. The module flag
+ * remains as the same-tab guard and the fallback where Web Locks is missing.
+ * Returns null when another flush already holds the lock.
  */
 let flushing = false;
 export async function withFlushLock<T>(run: () => Promise<T>): Promise<T | null> {
   if (flushing) return null;
   flushing = true;
   try {
+    if (typeof navigator !== "undefined" && "locks" in navigator) {
+      return await navigator.locks.request(
+        "lifeos-capture-flush",
+        { ifAvailable: true },
+        async (lock) => (lock ? await run() : null),
+      );
+    }
     return await run();
   } finally {
     flushing = false;

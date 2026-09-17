@@ -12,6 +12,7 @@ export type CaptureStatus = "pending" | "transcribing" | "filing" | "done" | "fa
 export type CaptureSource = "phone_voice" | "phone_text" | "desktop_text" | "desktop_voice";
 export type SuggestionKind = "task" | "deadline_change" | "follow_up" | "person_fact" | "project_update";
 export type SuggestionStatus = "pending" | "accepted" | "dismissed" | "expired";
+export type DismissedReason = "not_a_task" | "already_done" | "not_mine" | "wrong_details" | "other";
 export type Provider = "google" | "notion" | "granola";
 export type SourceKind = "email_thread" | "calendar_event" | "notion_page" | "granola_note";
 export type ExtractionStatus = "pending" | "done" | "skipped" | "failed";
@@ -130,6 +131,8 @@ export interface Suggestion extends Base {
   status: SuggestionStatus;
   resolved_at: string | null;
   resulting_task_id: string | null;
+  /** Optional one-tap reason picked after a dismiss; null when he didn't say. */
+  dismissed_reason: DismissedReason | null;
   dedupe_key: string;
 }
 

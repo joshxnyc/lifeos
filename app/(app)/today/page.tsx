@@ -51,15 +51,24 @@ export default async function TodayPage({
   const dayStart = fromZonedTime(`${today}T00:00:00`, tz).toISOString();
   const dayEnd = fromZonedTime(`${addDays(today, 1)}T00:00:00`, tz).toISOString();
 
+  // Today's routines come first: the streaks query below only needs the logs
+  // of routines scheduled today, not 120 days of every routine's history.
+  const { data: routineRows } = await supabase
+    .from("routines")
+    .select("*")
+    .eq("active", true)
+    .contains("schedule_days", [dow])
+    .order("sort_order");
+  const routineIds = ((routineRows ?? []) as Routine[]).map((r) => r.id);
+
   const [
     todayTasks,
     { domains, projects },
     { data: planRow },
     { data: eventRows },
-    { count: calendarEventCount },
+    { data: anyCalendarRow },
     { count: queueCount },
     { data: accountRows },
-    { data: routineRows },
     { data: routineLogRows },
     { data: upcomingRows },
     { data: reviewRow },
@@ -74,7 +83,10 @@ export default async function TodayPage({
       .lt("starts_at", dayEnd)
       .neq("status", "cancelled")
       .order("starts_at"),
-    supabase.from("calendar_events").select("id", { count: "exact", head: true }),
+    // Existence probe, not a count: the strip renders once any calendar has
+    // ever synced (progressive enablement), and counting the whole table on
+    // the most-opened screen was pure waste.
+    supabase.from("calendar_events").select("id").limit(1),
     supabase
       .from("suggestions")
       .select("id", { count: "exact", head: true })
@@ -84,16 +96,13 @@ export default async function TodayPage({
       .select(
         "id, provider, label, status, writable_calendar_id, default_domain_id, last_synced_at, last_error, created_at",
       ),
-    supabase
-      .from("routines")
-      .select("*")
-      .eq("active", true)
-      .contains("schedule_days", [dow])
-      .order("sort_order"),
-    supabase
-      .from("routine_logs")
-      .select("routine_id, date, status")
-      .gte("date", addDays(today, -120)),
+    routineIds.length
+      ? supabase
+          .from("routine_logs")
+          .select("routine_id, date, status")
+          .in("routine_id", routineIds)
+          .gte("date", addDays(today, -120))
+      : Promise.resolve({ data: [] as Array<Pick<RoutineLog, "routine_id" | "date" | "status">> }),
     supabase
       .from("tasks")
       .select(TASK_SELECT)
@@ -108,6 +117,7 @@ export default async function TodayPage({
       .eq("week_start", mondayOf(today))
       .maybeSingle(),
   ]);
+  const hasCalendar = Boolean(anyCalendarRow?.length);
 
   // Canvas 2c: once the week's review is done, the date line says so and points
   // at the next one instead of leaving the prompt hanging around.
@@ -295,7 +305,7 @@ export default async function TodayPage({
             canBlockTime={canBlockTime}
           />
 
-          {calendarEventCount ? <ScheduleStrip events={events} timezone={tz} /> : null}
+          {hasCalendar ? <ScheduleStrip events={events} timezone={tz} /> : null}
 
           <RoutinesRow routines={routines} date={today} />
 
