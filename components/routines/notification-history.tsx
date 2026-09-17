@@ -15,6 +15,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
   review_prompt: "Weekly review",
   queue_digest: "Queue",
   follow_up_due: "Follow-up",
+  task_due: "Task due",
   needs_reauth: "Account",
   sync_failed: "Job",
   custom: "Custom",

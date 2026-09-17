@@ -3,6 +3,7 @@ import { getSettings } from "@/lib/settings";
 import { getJsonSetting } from "@/lib/integrations/settings-json";
 import type { NotificationToggles } from "@/lib/integrations/notification-kinds";
 import { isInQuietHours } from "@/lib/notify";
+import { normalizeDueTime, taskReminderAt } from "@/lib/domain/task-reminders";
 import { sendPushToAllDevices } from "@/lib/push";
 import { localDate, localTime, mondayOf } from "@/lib/time";
 import type { NotificationRow } from "@/lib/types";
@@ -110,6 +111,40 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
       // Already counted above and never fetched during quiet hours; the guard
       // stays as a backstop in case the query ever widens again.
       continue;
+    }
+
+    // A deadline reminder is only sent while it is still true: the task must
+    // still be open (not done, dropped, mirrored or handed to someone else),
+    // still carry the deadline this row was enqueued for (reschedules re-enter
+    // via schedule-day), and the deadline itself must still be ahead — a row
+    // held through quiet hours must not buzz about last night's deadline.
+    if (n.kind === "task_due") {
+      const taskId = typeof n.payload?.task_id === "string" ? (n.payload.task_id as string) : null;
+      let stillDue = false;
+      if (taskId) {
+        const { data: task } = await supabase
+          .from("tasks")
+          .select("status, owner, is_mirror, due_date, due_time")
+          .eq("id", taskId)
+          .maybeSingle();
+        if (
+          task &&
+          task.status === "open" &&
+          task.owner === "me" &&
+          !task.is_mirror &&
+          task.due_date === (n.payload?.due_date ?? null) &&
+          normalizeDueTime(task.due_time) === (n.payload?.due_time ?? null) &&
+          task.due_date &&
+          taskReminderAt({ due_date: task.due_date, due_time: task.due_time }, tz, now) !== null
+        ) {
+          stillDue = true;
+        }
+      }
+      if (!stillDue) {
+        await setStatus(n.id, { status: "cancelled" });
+        cancelled += 1;
+        continue;
+      }
     }
 
     // The 3h repeat exists only until the review is actually under way.
