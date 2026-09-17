@@ -129,6 +129,68 @@ export function summarizeScorecard(scorecard: Scorecard): PreviousWeekSummary {
   };
 }
 
+/**
+ * Rows as the queries hand them over, before they fit `ScorecardInput`:
+ * routine logs in one flat list, whole previous scorecards instead of
+ * summaries, a timestamp instead of an as_of date. `assembleScorecardInput`
+ * is the one typed bridge between the two shapes — never cast across them.
+ */
+export interface ScorecardRawRows {
+  week_start: string;
+  week_end?: string;
+  timezone: string;
+  /** ISO timestamp the card is computed at; becomes as_of, clamped into the week. */
+  now: string;
+  domains: { id: string }[];
+  tasks: ScorecardTaskRow[];
+  suggestions: ScorecardSuggestionRow[];
+  routines: { id: string; name: string; schedule_days: number[] }[];
+  routine_logs: (Pick<RoutineLog, "date" | "status"> & { routine_id: string })[];
+  captures: ScorecardCaptureRow[];
+  /** Calendar rows carry no domain mapping yet; those hours land in `unassigned`. */
+  calendar_events: (Omit<ScorecardEventRow, "domain_id"> & { domain_id?: string | null })[];
+  people_overdue_followup: number;
+  previous_scorecards: Scorecard[];
+}
+
+/** Turn raw rows into `ScorecardInput`. Pure; safe on completely empty data. */
+export function assembleScorecardInput(raw: ScorecardRawRows): ScorecardInput {
+  const weekEnd = raw.week_end ?? addDays(raw.week_start, 6);
+  const today = localDate(new Date(raw.now), raw.timezone);
+  const asOf = today < raw.week_start ? raw.week_start : today > weekEnd ? weekEnd : today;
+
+  const logsByRoutine = new Map<string, Pick<RoutineLog, "date" | "status">[]>();
+  for (const log of raw.routine_logs ?? []) {
+    const entry = { date: log.date, status: log.status };
+    const list = logsByRoutine.get(log.routine_id);
+    if (list) list.push(entry);
+    else logsByRoutine.set(log.routine_id, [entry]);
+  }
+
+  return {
+    week_start: raw.week_start,
+    week_end: weekEnd,
+    as_of: asOf,
+    timezone: raw.timezone,
+    domain_ids: (raw.domains ?? []).map((d) => d.id),
+    tasks: raw.tasks ?? [],
+    suggestions: raw.suggestions ?? [],
+    routines: (raw.routines ?? []).map((routine) => ({
+      id: routine.id,
+      name: routine.name,
+      schedule_days: routine.schedule_days,
+      logs: logsByRoutine.get(routine.id) ?? [],
+    })),
+    captures: raw.captures ?? [],
+    calendar_events: (raw.calendar_events ?? []).map((event) => ({
+      ...event,
+      domain_id: event.domain_id ?? null,
+    })),
+    people_overdue_followup: raw.people_overdue_followup ?? 0,
+    previous_weeks: (raw.previous_scorecards ?? []).map(summarizeScorecard),
+  };
+}
+
 export function computeScorecard(input: ScorecardInput): Scorecard {
   const weekStart = input.week_start;
   const weekEnd = input.week_end ?? addDays(weekStart, 6);
@@ -185,6 +247,9 @@ export function computeScorecard(input: ScorecardInput): Scorecard {
   }
 
   // ---- routines ---------------------------------------------------------
+  // Only days up to as_of count, so a card computed mid-week does not book
+  // Thursday as missed on Wednesday. As_of itself with no log is still
+  // pending — same rule as streaks and completionRate.
   const weekDays = eachDate(weekStart, weekEnd);
   const routines: Scorecard["routines"] = input.routines.map((routine) => {
     const scheduledDays = new Set(routine.schedule_days);
@@ -195,12 +260,13 @@ export function computeScorecard(input: ScorecardInput): Scorecard {
     let missed = 0;
     for (const date of weekDays) {
       if (!scheduledDays.has(dayOfWeekOf(date))) continue;
-      scheduled++;
+      if (date > asOf) continue; // not reached yet
       const status = byDate.get(date);
+      if (!status && date === asOf) continue; // today, still pending
+      scheduled++;
       if (status === "done") done++;
       else if (status === "skipped") skipped++;
-      else if (status === "missed") missed++;
-      else if (date < asOf) missed++; // nightly job has not written it yet
+      else missed++; // explicit missed, or a past day the nightly job has not written yet
     }
     const denominator = scheduled - skipped;
     const streaks = computeStreaks(routine.logs, routine.schedule_days, asOf);

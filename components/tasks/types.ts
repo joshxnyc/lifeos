@@ -14,7 +14,14 @@ export interface TaskView extends Task {
 }
 
 /** Every server action in this workstream returns this shape, never throws. */
-export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
+export type ActionResult =
+  | {
+      ok: true;
+      id?: string;
+      /** Set by completeTask when it spawned the next recurrence occurrence, so undo can remove it. */
+      spawnedId?: string;
+    }
+  | { ok: false; error: string };
 
 export interface DomainOption {
   id: string;

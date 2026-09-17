@@ -7,6 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { serverEnv } from "@/lib/env";
 import { listAccounts } from "@/lib/integrations/accounts";
 import { errorStatus, getGoogleClientForAccount } from "@/lib/integrations/google/client";
+import { blockMinutesForTask, DEFAULT_TASK_MINUTES } from "@/lib/domain/task-block";
 import type { CalendarEvent, ConnectedAccount, Routine, Task } from "@/lib/types";
 
 /**
@@ -25,7 +26,6 @@ import type { CalendarEvent, ConnectedAccount, Routine, Task } from "@/lib/types
  * event, so the calendar stays an honest record of the day.
  */
 
-const DEFAULT_TASK_MINUTES = 60;
 const ROUTINE_MINUTES = 30;
 const DONE_MARK = " ✓";
 
@@ -87,8 +87,9 @@ export async function blockTimeForTask(
   const cal = google.calendar({ version: "v3", auth });
   const calendarId = account.writable_calendar_id as string;
 
-  const start = await chooseStart(cal, account, task, timezone);
-  const end = new Date(start.getTime() + DEFAULT_TASK_MINUTES * 60_000);
+  const minutes = blockMinutesForTask(task.duration_minutes);
+  const start = await chooseStart(cal, account, task, timezone, minutes);
+  const end = new Date(start.getTime() + minutes * 60_000);
 
   const { data: created } = await cal.events.insert({
     calendarId,
@@ -378,6 +379,7 @@ async function chooseStart(
   account: ConnectedAccount,
   task: Task,
   timezone: string,
+  minutes: number,
 ): Promise<Date> {
   if (task.due_date && task.due_time) return explicitStart(task, timezone) as Date;
 
@@ -394,11 +396,11 @@ async function chooseStart(
       start: fromZonedTime(`${tomorrow}T08:00:00`, timezone),
       end: fromZonedTime(`${tomorrow}T12:00:00`, timezone),
     },
-  ].filter((w) => w.end.getTime() - w.start.getTime() >= DEFAULT_TASK_MINUTES * 60_000);
+  ].filter((w) => w.end.getTime() - w.start.getTime() >= minutes * 60_000);
 
   const busy = await busyPeriods(cal, account, windows[0]?.start ?? now, windows.at(-1)?.end ?? now);
   for (const w of windows) {
-    const slot = firstGap(busy, w.start, w.end, DEFAULT_TASK_MINUTES * 60_000);
+    const slot = firstGap(busy, w.start, w.end, minutes * 60_000);
     if (slot) return slot;
   }
   return explicitStart(task, timezone) ?? fromZonedTime(`${tomorrow}T09:00:00`, timezone);

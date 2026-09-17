@@ -286,6 +286,7 @@ export async function completeTask(id: string): Promise<ActionResult> {
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
 
+  let spawnedId: string | undefined;
   if (task.recurrence_rule) {
     const today = await todayFor(c);
     const anchor = task.due_date ?? task.scheduled_date ?? today;
@@ -297,29 +298,80 @@ export async function completeTask(id: string): Promise<ActionResult> {
       next = null; // an unparseable rule must never block completing the task
     }
     if (next) {
-      await c.supabase.from("tasks").insert({
-        user_id: c.userId,
-        domain_id: task.domain_id,
-        project_id: task.project_id,
-        person_id: task.person_id,
-        title: task.title,
-        body_md: task.body_md,
-        priority: task.priority,
-        due_date: task.due_date ? next : null,
-        due_time: task.due_time,
-        scheduled_date: task.scheduled_date ? next : null,
-        owner: task.owner,
-        origin: task.origin,
-        origin_id: task.origin_id,
-        source_item_id: task.source_item_id,
-        recurrence_rule: task.recurrence_rule,
-        sort_order: task.sort_order,
-      });
+      const { data: spawned } = await c.supabase
+        .from("tasks")
+        .insert({
+          user_id: c.userId,
+          domain_id: task.domain_id,
+          project_id: task.project_id,
+          person_id: task.person_id,
+          title: task.title,
+          body_md: task.body_md,
+          priority: task.priority,
+          due_date: task.due_date ? next : null,
+          due_time: task.due_time,
+          scheduled_date: task.scheduled_date ? next : null,
+          owner: task.owner,
+          origin: task.origin,
+          origin_id: task.origin_id,
+          source_item_id: task.source_item_id,
+          recurrence_rule: task.recurrence_rule,
+          sort_order: task.sort_order,
+        })
+        .select("id")
+        .single();
+      spawnedId = (spawned as { id: string } | null)?.id;
     }
   }
 
   await bumpProjects(c, [task.project_id]);
   await syncCalendarBlock(task, id, c.userId); // done → the event title gets a "✓"
+  revalidateTaskViews();
+  return { ok: true, id, spawnedId };
+}
+
+/**
+ * Undo a just-finished complete (the toast's Undo action): reopen the task
+ * and remove the recurrence occurrence completeTask spawned — but only while
+ * that occurrence is still open and untouched (same title and rule, never
+ * completed, no calendar block), so nothing the user already worked on is
+ * lost. `spawnedId` comes from the client, so it is verified against the
+ * parent before anything is deleted.
+ */
+export async function undoCompleteTask(
+  id: string,
+  spawnedId?: string | null,
+): Promise<ActionResult> {
+  const c = await ctx();
+  if (!c) return SIGNED_OUT;
+  if (!uuid.safeParse(id).success) return { ok: false, error: "Unknown task." };
+
+  const task = await loadTask(c, id);
+  if (!task) return { ok: false, error: "That task no longer exists." };
+  if (task.is_mirror) return { ok: false, error: "Mirrored tasks are managed in Notion." };
+
+  if (spawnedId && spawnedId !== id && uuid.safeParse(spawnedId).success) {
+    const spawned = await loadTask(c, spawnedId);
+    if (
+      spawned &&
+      spawned.status === "open" &&
+      !spawned.completed_at &&
+      !spawned.calendar_event_id &&
+      spawned.title === task.title &&
+      spawned.recurrence_rule === task.recurrence_rule
+    ) {
+      await c.supabase.from("tasks").delete().eq("id", spawnedId);
+    }
+  }
+
+  const { error } = await c.supabase
+    .from("tasks")
+    .update({ status: "open", completed_at: null, dropped_reason: null })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  await bumpProjects(c, [task.project_id]);
+  await syncCalendarBlock(task, id, c.userId); // open again → the "✓" comes off
   revalidateTaskViews();
   return { ok: true, id };
 }

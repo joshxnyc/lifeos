@@ -3,11 +3,12 @@
 // Renders one or more labelled task sections and owns the two sheets every
 // row can open (reschedule, edit), so there is a single instance of each.
 
-import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn, safeHttpUrl } from "@/lib/utils";
 import { TaskRow } from "@/components/tasks/task-row";
 import { RescheduleSheet } from "@/components/tasks/reschedule-sheet";
 import { TaskSheet } from "@/components/tasks/task-sheet";
+import { useTaskListKeys } from "@/components/tasks/use-task-keys";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { DomainOption, ProjectOption, TaskView } from "@/components/tasks/types";
 
@@ -50,6 +51,35 @@ export function TaskList({
 
   const filled = sections.filter((s) => s.tasks.length > 0);
 
+  // Keyboard navigation (desktop): j/k roving focus across all visible rows,
+  // x complete, e edit, t reschedule. Each row registers its animated
+  // complete so "x" runs the exact tap path, Undo toast included.
+  const completeHandlers = useRef(new Map<string, () => void>());
+  const registerComplete = useCallback((id: string, run: (() => void) | null) => {
+    if (run) completeHandlers.current.set(id, run);
+    else completeHandlers.current.delete(id);
+  }, []);
+
+  const visibleTasks = useMemo(() => sections.flatMap((s) => s.tasks), [sections]);
+  const focusedId = useTaskListKeys({
+    tasks: visibleTasks,
+    disabled: Boolean(rescheduling || editing),
+    onComplete: (task) => completeHandlers.current.get(task.id)?.(),
+    onEdit: (task) => {
+      // "e" does what tapping the row does: mirrored rows open in Notion,
+      // everything else opens the edit sheet.
+      if (task.is_mirror) {
+        const url = safeHttpUrl(task.external_url);
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        setEditing(task);
+      }
+    },
+    onReschedule: (task) => {
+      if (!task.is_mirror && task.status !== "done") setRescheduling(task);
+    },
+  });
+
   return (
     <>
       {filled.length === 0 && emptyLine ? (
@@ -71,8 +101,10 @@ export function TaskList({
                 task={task}
                 today={today}
                 showProject={showProject}
+                focused={task.id === focusedId}
                 onEdit={setEditing}
                 onReschedule={setRescheduling}
+                registerComplete={registerComplete}
               />
             ))}
           </ul>

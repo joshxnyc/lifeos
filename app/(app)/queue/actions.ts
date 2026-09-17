@@ -6,11 +6,33 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
 import { localDate } from "@/lib/time";
-import type { Suggestion, SuggestionProposed } from "@/lib/types";
+import type { ProjectStatus, Suggestion, SuggestionProposed } from "@/lib/types";
 
 // SPEC §7.2 queue actions. Accept creates the row the suggestion proposed
 // (editable inline before accepting) and links it back to the source item;
-// dismiss only marks the suggestion.
+// dismiss only marks the suggestion. Both are undoable for the life of the
+// toast: undo reverses what accept wrote and returns the card to pending.
+
+/**
+ * What acceptSuggestion needs to remember to reverse itself. Stored inside
+ * the suggestion's `proposed` jsonb under `_undo` while the suggestion is
+ * accepted, and stripped again when an undo returns it to pending. Kept
+ * server-side so the client can never fabricate an undo payload.
+ */
+interface AcceptUndo {
+  /** deadline_change: the due date the task had before accept moved it. */
+  prev_due_date?: string | null;
+  /** person_fact: the person written to, and the exact line appended. */
+  person_id?: string;
+  created_person?: boolean;
+  line?: string;
+  /** project_update: the project written to, and prior values accept changed. */
+  project_id?: string;
+  prev_target_date?: string | null;
+  prev_status?: ProjectStatus;
+}
+
+type StoredProposed = SuggestionProposed & { _undo?: AcceptUndo };
 
 const editedSchema = z
   .object({
@@ -107,6 +129,7 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
   const settings = await getSettings(supabase, userId);
   const today = localDate(new Date(), settings.timezone);
   let resultingTaskId: string | null = null;
+  let undo: AcceptUndo | undefined;
 
   if (suggestion.kind === "task" || suggestion.kind === "follow_up") {
     const domainId = proposed.domain_id ?? (await fallbackDomainId(supabase, userId, suggestion));
@@ -148,7 +171,7 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
     // key, leaving the card "accepted" on screen and pending in the database.
     const { data: target } = await supabase
       .from("tasks")
-      .select("id, is_mirror, due_date")
+      .select("id, is_mirror")
       .eq("id", proposed.existing_task_id)
       .maybeSingle();
     if (!target) throw new Error("That task no longer exists. Dismiss this one.");
@@ -160,7 +183,6 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
       .eq("id", proposed.existing_task_id);
     if (updateError) throw new Error(`accept: ${updateError.message}`);
     resultingTaskId = proposed.existing_task_id;
-    undo = { prev_due_date: (target.due_date as string | null) ?? null };
   } else if (suggestion.kind === "person_fact") {
     let personId = proposed.person_id ?? null;
     if (!personId && proposed.new_person?.name) {

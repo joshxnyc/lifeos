@@ -5,11 +5,11 @@
 // desktop the same two actions appear on hover. Mirrored (Notion) tasks show
 // an inert checkbox and open externally (CONTRACTS ground rule 7).
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, CalendarClock, ExternalLink, Pencil } from "lucide-react";
 import { cn, safeHttpUrl } from "@/lib/utils";
 import { PersonAvatar, DOMAIN_EDGE_CLASS, NotionGlyph } from "@/components/ui/domain";
-import { completeTask, reopenTask } from "@/app/(app)/tasks/actions";
+import { completeTask, reopenTask, undoCompleteTask } from "@/app/(app)/tasks/actions";
 import { toast } from "@/components/tasks/toast";
 import { DUE_TONE_CLASS, dueTone, formatDueLabel, relativeDayLabel } from "@/components/tasks/format";
 import type { TaskView } from "@/components/tasks/types";
@@ -21,14 +21,20 @@ export function TaskRow({
   task,
   today,
   showProject = true,
+  focused = false,
   onEdit,
   onReschedule,
+  registerComplete,
 }: {
   task: TaskView;
   today: string;
   showProject?: boolean;
+  /** Keyboard roving focus (j/k in TaskList) rests on this row. */
+  focused?: boolean;
   onEdit: (task: TaskView) => void;
   onReschedule: (task: TaskView) => void;
+  /** Lets TaskList trigger this row's complete (with animation) from the keyboard. */
+  registerComplete?: (id: string, run: (() => void) | null) => void;
 }) {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -52,10 +58,31 @@ export function TaskRow({
         if (!res.ok) {
           setCompleting(false);
           toast(res.error);
+          return;
         }
+        // Undo reopens the task and removes the recurrence occurrence the
+        // complete just spawned (the action verifies it is still untouched).
+        const spawnedId = res.spawnedId ?? null;
+        toast("Done", {
+          label: "Undo",
+          onPress: () => {
+            void undoCompleteTask(task.id, spawnedId).then((undo) => {
+              if (!undo.ok) toast(undo.error);
+              else setCompleting(false);
+            });
+          },
+        });
       });
     }, 300);
   }
+
+  // Register the animated complete path so TaskList's keyboard hook ("x")
+  // goes through the exact same code as a checkbox tap. No dependency array:
+  // runComplete closes over fresh state each render, and the map set is cheap.
+  useEffect(() => {
+    registerComplete?.(task.id, swipeable ? runComplete : null);
+    return () => registerComplete?.(task.id, null);
+  });
 
   function runReopen() {
     startTransition(async () => {
@@ -103,6 +130,7 @@ export function TaskRow({
 
   return (
     <li
+      data-task-id={task.id}
       className={cn(
         "relative overflow-hidden border-b border-line",
         completing && "task-completing",
@@ -122,7 +150,9 @@ export function TaskRow({
 
       <div
         className={cn(
-          "group relative flex min-h-11 items-center gap-1 border-l-[3px] bg-paper py-1 pr-1",
+          "group relative flex min-h-11 items-center gap-1 border-l-[3px] py-1 pr-1",
+          // Keyboard focus reads as a paper-2 wash, like the palette rows.
+          focused ? "bg-paper-2" : "bg-paper",
           DOMAIN_EDGE_CLASS[task.domain_slug],
         )}
         style={{
