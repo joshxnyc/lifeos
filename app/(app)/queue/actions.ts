@@ -266,6 +266,142 @@ export async function dismissSuggestion(id: string): Promise<void> {
   revalidatePath("/queue");
 }
 
+/**
+ * Undo an accept (the toast's Undo action): reverse what accept wrote for
+ * this kind, then return the suggestion to pending so the card reappears.
+ * The reversal only touches rows that still look exactly as accept left them
+ * — anything already changed by hand stays, and the undo refuses instead of
+ * clobbering it.
+ */
+export async function undoAcceptSuggestion(id: string): Promise<void> {
+  const { supabase } = await session();
+  if (!z.string().uuid().safeParse(id).success) throw new Error("Unknown suggestion.");
+
+  const { data: row, error } = await supabase
+    .from("suggestions")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !row) throw new Error("Suggestion not found.");
+  const suggestion = row as Suggestion;
+  if (suggestion.status !== "accepted") return; // already undone or never accepted
+
+  const stored = (suggestion.proposed ?? {}) as StoredProposed;
+  const { _undo: undo, ...proposed } = stored;
+
+  if (suggestion.kind === "task" || suggestion.kind === "follow_up") {
+    // Accept created a task: delete it, but only while it is untouched —
+    // still open and still the row this suggestion made.
+    if (suggestion.resulting_task_id) {
+      const { data: task } = await supabase
+        .from("tasks")
+        .select("id, status, origin, origin_id, project_id")
+        .eq("id", suggestion.resulting_task_id)
+        .maybeSingle();
+      if (task) {
+        if (task.status !== "open" || task.origin !== "suggestion" || task.origin_id !== suggestion.id) {
+          throw new Error("That task was already changed, so this stays accepted.");
+        }
+        await supabase.from("tasks").delete().eq("id", task.id);
+        await bumpProject(supabase, task.project_id as string | null);
+      }
+    }
+  } else if (suggestion.kind === "deadline_change") {
+    // Accept moved a due date: put the old one back, unless it moved again.
+    if (undo && suggestion.resulting_task_id) {
+      const { data: task } = await supabase
+        .from("tasks")
+        .select("id, due_date, is_mirror")
+        .eq("id", suggestion.resulting_task_id)
+        .maybeSingle();
+      if (task && !task.is_mirror) {
+        if ((task.due_date ?? null) !== (proposed.due_date ?? null)) {
+          throw new Error("That deadline changed again, so this stays accepted.");
+        }
+        const { error: revertError } = await supabase
+          .from("tasks")
+          .update({ due_date: undo.prev_due_date ?? null })
+          .eq("id", task.id);
+        if (revertError) throw new Error(`undo: ${revertError.message}`);
+      }
+    }
+  } else if (suggestion.kind === "person_fact") {
+    // Accept appended one line to a person's notes (and may have created the
+    // person). Strip the line while it is still the last one; a person accept
+    // created is removed again only when those notes are exactly that line.
+    if (undo?.person_id && undo.line) {
+      const { data: person } = await supabase
+        .from("people")
+        .select("id, notes_md")
+        .eq("id", undo.person_id)
+        .maybeSingle();
+      const notes = person?.notes_md ?? "";
+      if (person && notes === undo.line && undo.created_person) {
+        await supabase.from("people").delete().eq("id", person.id);
+      } else if (person && notes === undo.line) {
+        await supabase.from("people").update({ notes_md: null }).eq("id", person.id);
+      } else if (person && notes.endsWith(`\n${undo.line}`)) {
+        await supabase
+          .from("people")
+          .update({ notes_md: notes.slice(0, -(undo.line.length + 1)) })
+          .eq("id", person.id);
+      }
+      // Notes edited since the accept: leave them alone, just reopen the card.
+    }
+  } else if (suggestion.kind === "project_update") {
+    // Accept appended one line to the project log and may have moved its
+    // target date or status; restore what it recorded.
+    if (undo?.project_id && undo.line) {
+      const { data: project } = await supabase
+        .from("projects")
+        .select("id, description")
+        .eq("id", undo.project_id)
+        .maybeSingle();
+      if (project) {
+        const patch: Record<string, unknown> = {};
+        const description = project.description ?? "";
+        if (description === undo.line) patch.description = null;
+        else if (description.endsWith(`\n${undo.line}`)) {
+          patch.description = description.slice(0, -(undo.line.length + 1));
+        }
+        if ("prev_target_date" in undo) patch.target_date = undo.prev_target_date ?? null;
+        if ("prev_status" in undo) patch.status = undo.prev_status;
+        if (Object.keys(patch).length) {
+          await supabase.from("projects").update(patch).eq("id", project.id);
+        }
+      }
+    }
+  }
+
+  const { error: reopenError } = await supabase
+    .from("suggestions")
+    .update({ status: "pending", resolved_at: null, resulting_task_id: null, proposed })
+    .eq("id", suggestion.id)
+    .eq("status", "accepted");
+  if (reopenError) throw new Error(`undo: ${reopenError.message}`);
+
+  revalidatePath("/queue");
+  revalidatePath("/today");
+}
+
+/**
+ * Undo a dismiss (the toast's Undo action). Setting the row back to pending
+ * also takes it out of the extractor's 30-day dismissed dedupe set — that set
+ * is just a status query over recent suggestions — so nothing else needs
+ * reversing and the card simply reappears in the queue.
+ */
+export async function undoDismissSuggestion(id: string): Promise<void> {
+  const { supabase } = await session();
+  if (!z.string().uuid().safeParse(id).success) throw new Error("Unknown suggestion.");
+  const { error } = await supabase
+    .from("suggestions")
+    .update({ status: "pending", resolved_at: null })
+    .eq("id", id)
+    .eq("status", "dismissed");
+  if (error) throw new Error(`undo: ${error.message}`);
+  revalidatePath("/queue");
+}
+
 async function fallbackDomainId(
   supabase: SupabaseClient,
   userId: string,

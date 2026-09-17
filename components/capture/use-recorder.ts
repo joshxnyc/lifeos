@@ -29,6 +29,11 @@ export function useRecorder(opts?: { onAutoStop?: () => void }) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resolveRef = useRef<((blob: Blob | null) => void) | null>(null);
   const discardRef = useRef(false);
+  // Latest-callback ref: the owning UI passes a closure over its own
+  // finish/stopRecording, which is re-created every render.
+  const onAutoStopRef = useRef(opts?.onAutoStop);
+  onAutoStopRef.current = opts?.onAutoStop;
+  const autoStoppedRef = useRef(false);
 
   const teardown = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -89,8 +94,16 @@ export function useRecorder(opts?: { onAutoStop?: () => void }) {
       recorder.start();
 
       setElapsedMs(0);
+      autoStoppedRef.current = false;
       const started = Date.now();
-      timerRef.current = setInterval(() => setElapsedMs(Date.now() - started), 200);
+      timerRef.current = setInterval(() => {
+        const elapsed = Date.now() - started;
+        setElapsedMs(elapsed);
+        if (elapsed >= RECORDING_LIMIT_MS && !autoStoppedRef.current) {
+          autoStoppedRef.current = true;
+          onAutoStopRef.current?.();
+        }
+      }, 200);
       setRecording(true);
       return true;
     } catch {

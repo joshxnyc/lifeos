@@ -13,7 +13,12 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/components/tasks/toast";
 import { Waveform } from "@/components/capture/waveform";
 import { FilingIndicator } from "@/components/capture/filing-indicator";
-import { formatElapsed, useRecorder } from "@/components/capture/use-recorder";
+import {
+  formatElapsed,
+  RECORDING_COUNTDOWN_FROM_MS,
+  RECORDING_LIMIT_MS,
+  useRecorder,
+} from "@/components/capture/use-recorder";
 import { isPhone, postCapture, uploadAudio } from "@/components/capture/send";
 import { waitForCaptureRow } from "@/components/capture/wait";
 import { summarizeCapture } from "@/components/capture/use-smart-add";
@@ -34,7 +39,14 @@ const MAX_WAIT_MS = 120_000;
 export function GlobalRecord() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-  const { recording, elapsedMs, analyser, start, stop, cancel } = useRecorder();
+  // The 5 minute ceiling flows through the same finish() as a tap on the stop
+  // button, so the audio is uploaded and filed — never discarded.
+  const { recording, elapsedMs, analyser, start, stop, cancel } = useRecorder({
+    onAutoStop: () => {
+      toast("Recording hit the 5 minute limit. Filed what was captured.");
+      void finish();
+    },
+  });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [filing, setFiling] = useState(false);
 

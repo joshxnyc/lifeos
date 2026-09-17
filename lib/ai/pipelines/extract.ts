@@ -1,12 +1,13 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { callStructured, loadPrompt } from "@/lib/ai/client";
+import { callStructured, DailyAiBudgetError, loadPrompt } from "@/lib/ai/client";
 import { buildContext } from "@/lib/ai/context";
 import { enqueueNotification } from "@/lib/notify";
 import { getSettings } from "@/lib/settings";
 import { addDays, localDate } from "@/lib/time";
 import { suggestionDedupeKey } from "@/lib/domain/dedupe";
+import { extractionOffset, reviewedUpto } from "@/lib/domain/extraction-window";
 import type { SourceItem, SuggestionKind, SuggestionProposed, TaskOwner } from "@/lib/types";
 
 // SPEC §7.2 — the extraction sweep. Runs hourly over pending source_items,

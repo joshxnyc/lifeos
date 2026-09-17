@@ -45,6 +45,7 @@ export function ScorecardView({
   const onTime = onTimeRate(scorecard);
   const adherence = routineAdherence(scorecard);
   const deltas = scorecard.deltas?.vs_4wk_avg ?? { completed: null, on_time_rate: null, adherence: null };
+  const firstWeek = !scorecard.deltas?.vs_prev_weeks?.length;
 
   const domainRows = domains
     .map((d) => ({ domain: d, stats: scorecard.domains?.[d.id] }))

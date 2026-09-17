@@ -8,12 +8,15 @@ export function StatTile({
   suffix,
   delta,
   goodDirection = "up",
+  noHistory = false,
 }: {
   label: string;
   value: number | string;
   suffix?: string;
   delta?: number | null;
   goodDirection?: "up" | "down";
+  /** First week on record: there is no 4-week average to compare against. */
+  noHistory?: boolean;
 }) {
   const hasDelta = typeof delta === "number" && Number.isFinite(delta) && Math.abs(delta) >= 0.05;
   const up = (delta ?? 0) > 0;
@@ -36,7 +39,9 @@ export function StatTile({
       >
         {hasDelta
           ? `${up ? "↑" : "↓"} ${Math.abs(Math.round((delta ?? 0) * 10) / 10)}${suffix ?? ""} vs 4-wk avg`
-          : "level vs 4-wk avg"}
+          : noHistory
+            ? "first week"
+            : "level vs 4-wk avg"}
       </p>
     </div>
   );
