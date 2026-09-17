@@ -4,6 +4,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireEnv, serverEnv } from "@/lib/env";
+import { enqueueNotification } from "@/lib/notify";
 
 // SPEC §7 + DECISIONS.md: all LLM traffic goes through OpenRouter on a single
 // key (Joshua's call, 2026-09-15). Structured output via forced tool calls;

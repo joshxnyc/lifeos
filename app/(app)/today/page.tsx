@@ -277,7 +277,7 @@ export default async function TodayPage({
                 >
                   <span className="size-1.5 rounded-full bg-warn" aria-hidden />
                   {a.last_synced_at
-                    ? `${a.label} hasn't synced since ${timeAgo(a.last_synced_at, now).replace(/ ago$/, "")}`
+                    ? `${a.label} hasn't synced since ${timeAgo(a.last_synced_at, now)}`
                     : `${a.label} hasn't synced yet`}
                 </Link>
               ))}

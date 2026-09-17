@@ -212,12 +212,13 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
       .from("people")
       .update({ notes_md: person?.notes_md ? `${person.notes_md.trimEnd()}\n${line}` : line })
       .eq("id", personId);
+    undo = { person_id: personId, line, created_person: createdPerson };
   } else if (suggestion.kind === "project_update") {
     const projectId = proposed.project_id;
     if (!projectId) throw new Error("This update needs a project. Pick one before accepting.");
     const { data: project } = await supabase
       .from("projects")
-      .select("description")
+      .select("description, target_date, status")
       .eq("id", projectId)
       .single();
     const line = `- [${today}] ${(suggestion.detail ?? suggestion.title).trim()}`;
@@ -225,19 +226,27 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
       description: project?.description ? `${project.description.trimEnd()}\n${line}` : line,
       last_activity_at: new Date().toISOString(),
     };
-    if (proposed.target_date) update.target_date = proposed.target_date;
-    if (proposed.status) update.status = proposed.status;
+    undo = { project_id: projectId, line };
+    if (proposed.target_date) {
+      update.target_date = proposed.target_date;
+      undo.prev_target_date = (project?.target_date as string | null) ?? null;
+    }
+    if (proposed.status) {
+      update.status = proposed.status;
+      undo.prev_status = (project?.status as ProjectStatus | null) ?? "active";
+    }
     const { error: projectError } = await supabase.from("projects").update(update).eq("id", projectId);
     if (projectError) throw new Error(`accept: ${projectError.message}`);
   }
 
+  const stored: StoredProposed = undo ? { ...proposed, _undo: undo } : proposed;
   const { error: closeError } = await supabase
     .from("suggestions")
     .update({
       status: "accepted",
       resolved_at: new Date().toISOString(),
       resulting_task_id: resultingTaskId,
-      proposed,
+      proposed: stored,
     })
     .eq("id", suggestion.id);
   if (closeError) throw new Error(`accept: ${closeError.message}`);

@@ -3,33 +3,30 @@
 // Web Push opt-in (SPEC §8). iOS only delivers push to a PWA installed on the
 // Home Screen, and only when permission is requested from a user tap — so this
 // is a button, never an effect.
+//
+// The device list below the button is the SERVER's view (push_subscriptions
+// rows): lib/push.ts deletes a row after repeated 410s, so a device can hold a
+// browser-side subscription that no longer receives anything. "Subscribed"
+// here means this device's endpoint has a healthy row, not merely that
+// getSubscription() returned something.
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  deviceLabel,
+  storeVapidPublicKey,
+  toApplicationServerKey,
+} from "@/components/push/vapid";
 
 type Phase = "checking" | "unsupported" | "needs_install" | "idle" | "subscribed" | "denied";
 
-function deviceLabel(): string {
-  const ua = navigator.userAgent;
-  const device = /iPhone/.test(ua)
-    ? "iPhone"
-    : /iPad/.test(ua)
-      ? "iPad"
-      : /Macintosh/.test(ua)
-        ? "Mac"
-        : /Android/.test(ua)
-          ? "Android"
-          : /Windows/.test(ua)
-            ? "Windows"
-            : "Browser";
-  const browser = /CriOS|Chrome/.test(ua)
-    ? "Chrome"
-    : /Firefox/.test(ua)
-      ? "Firefox"
-      : /Safari/.test(ua)
-        ? "Safari"
-        : "Browser";
-  return `${device} · ${browser}`;
+export interface PushDevice {
+  id: string;
+  endpoint: string;
+  device_label: string | null;
+  last_used_at: string | null;
+  failed_count: number;
 }
 
 /**
@@ -55,19 +52,22 @@ function isStandalone(): boolean {
   );
 }
 
-/** VAPID keys travel as base64url; PushManager wants raw bytes. */
-function applicationServerKey(base64: string): ArrayBuffer {
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const raw = window.atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return bytes.buffer;
+function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
+export function EnablePush({
+  vapidPublicKey,
+  devices,
+}: {
+  vapidPublicKey: string;
+  devices: PushDevice[];
+}) {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("checking");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [browserEndpoint, setBrowserEndpoint] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +87,13 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
       try {
         const reg = await readyRegistration();
         const sub = reg ? await reg.pushManager.getSubscription() : null;
-        if (!cancelled) setPhase(sub ? "subscribed" : "idle");
+        // Installs subscribed before the SW could self-heal: make sure the key
+        // is in IndexedDB for pushsubscriptionchange (sw.ts).
+        if (sub) void storeVapidPublicKey(vapidPublicKey);
+        if (cancelled) return;
+        setBrowserEndpoint(sub?.endpoint ?? null);
+        const row = sub ? devices.find((d) => d.endpoint === sub.endpoint) : undefined;
+        setPhase(row && row.failed_count === 0 ? "subscribed" : "idle");
       } catch {
         if (!cancelled) setPhase("idle");
       }
@@ -96,7 +102,7 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [devices, vapidPublicKey]);
 
   const enable = useCallback(async () => {
     setBusy(true);
@@ -111,12 +117,28 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
       }
       const reg = await readyRegistration();
       if (!reg) throw new Error("The service worker is not registered yet. Reload and try again.");
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({
+
+      let sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        const row = devices.find((d) => d.endpoint === endpoint);
+        // A subscription the server lost, or one that stopped accepting
+        // deliveries, is dead weight: mint a fresh endpoint rather than
+        // re-registering the stale one.
+        if (!row || row.failed_count > 0) {
+          await sub.unsubscribe().catch(() => {});
+          sub = null;
+        }
+      }
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: applicationServerKey(vapidPublicKey),
-        }));
+          applicationServerKey: toApplicationServerKey(vapidPublicKey),
+        });
+      }
+      // The SW needs the key to re-subscribe on pushsubscriptionchange.
+      await storeVapidPublicKey(vapidPublicKey);
+
       const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh: string; auth: string } };
       const res = await fetch("/api/push/subscribe", {
         method: "POST",
@@ -128,14 +150,16 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
         }),
       });
       if (!res.ok) throw new Error("The server rejected this subscription.");
+      setBrowserEndpoint(json.endpoint ?? null);
       setPhase("subscribed");
       setMessage(`This device is registered as ${deviceLabel()}.`);
+      router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Could not enable notifications.");
     } finally {
       setBusy(false);
     }
-  }, [vapidPublicKey]);
+  }, [vapidPublicKey, devices, router]);
 
   const sendTest = useCallback(async () => {
     setBusy(true);
@@ -149,12 +173,16 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
           ? `Sent to ${data.delivered} ${data.delivered === 1 ? "device" : "devices"}.`
           : "No registered device accepted the push.",
       );
+      // last_used_at / failed_count moved: refresh the server-rendered roster.
+      router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "The test push failed.");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [router]);
+
+  const thisRow = browserEndpoint ? devices.find((d) => d.endpoint === browserEndpoint) : undefined;
 
   return (
     <div className="flex flex-col items-start gap-2">
@@ -180,7 +208,7 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
 
       {phase === "idle" ? (
         <Button variant="primary" onClick={enable} disabled={busy}>
-          {busy ? "Enabling" : "Enable notifications"}
+          {busy ? "Enabling" : thisRow ? "Re-enable notifications" : "Enable notifications"}
         </Button>
       ) : null}
 
@@ -191,6 +219,32 @@ export function EnablePush({ vapidPublicKey }: { vapidPublicKey: string }) {
             {busy ? "Sending" : "Send test"}
           </Button>
         </div>
+      ) : null}
+
+      {/* The server's device roster. Rendered after the client check so the
+          "this device" marker never mismatches during hydration. */}
+      {phase !== "checking" && devices.length ? (
+        <ul className="mt-1 flex w-full flex-col gap-1.5">
+          {devices.map((d) => {
+            const failing = d.failed_count > 0;
+            const isThis = browserEndpoint !== null && d.endpoint === browserEndpoint;
+            return (
+              <li key={d.id} className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
+                <span className="text-ink">{d.device_label ?? "Unnamed device"}</span>
+                {isThis ? <span className="text-ink-3">this device</span> : null}
+                <span className={failing ? "text-danger" : "text-ink-2"}>
+                  {failing
+                    ? `not receiving push — ${d.failed_count} failed ${
+                        d.failed_count === 1 ? "delivery" : "deliveries"
+                      }`
+                    : d.last_used_at
+                      ? `last push ${formatDay(d.last_used_at)}`
+                      : "no push delivered yet"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       ) : null}
 
       {message ? <p className="text-[13px] text-ink-2">{message}</p> : null}

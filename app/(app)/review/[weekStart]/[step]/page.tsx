@@ -17,7 +17,7 @@ import { buildScorecard } from "@/lib/ai/pipelines/coach";
 import { isDormant } from "@/lib/domain/dormancy";
 import { daysSinceContact, isFollowUpOverdue } from "@/lib/people";
 import { daysSince } from "@/components/queue/relative-time";
-import type { CalendarEvent, Domain, Person, Project, Task, WeeklyReview } from "@/lib/types";
+import type { CalendarEvent, Domain, Person, Project, Scorecard, Task, WeeklyReview } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -93,17 +93,69 @@ export default async function ReviewStepPage({
 
   // -------------------------------------------------------------------------
 
+  async function renderScorecard() {
+    let scorecard: Scorecard | null =
+      review.status === "done" && review.scorecard ? review.scorecard : null;
+    let failure: string | null = null;
+    if (!scorecard) {
+      try {
+        scorecard = await buildScorecard(supabase, userId, weekStart);
+      } catch (err) {
+        failure = err instanceof Error ? err.message : "The numbers could not be computed.";
+      }
+    }
+
+    if (!scorecard) {
+      return (
+        <section>
+          <h1 className="sr-only">Scorecard</h1>
+          <div className="py-10">
+            <p className="display-lead">The scorecard failed to compute.</p>
+            {failure ? <p className="mt-2 text-[13px] text-danger">{failure}</p> : null}
+            <Link
+              href={`/review/${weekStart}/1`}
+              className="mt-5 inline-flex min-h-11 items-center text-[15px] text-accent"
+            >
+              Try again
+            </Link>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section>
+        <h1 className="sr-only">Scorecard</h1>
+        {review.status !== "done" && today < weekEnd ? (
+          <p className="mt-4 text-[13px] text-ink-2">
+            Numbers through {formatShortDate(today)}. The week ends {formatShortDate(weekEnd)}.
+          </p>
+        ) : null}
+        <ScorecardView scorecard={scorecard} domains={domains} />
+        <form action={commitScorecard.bind(null, weekStart)} className="mt-8">
+          <Button type="submit" variant="primary">
+            Continue
+          </Button>
+        </form>
+      </section>
+    );
+  }
+
   async function renderSlipped() {
     const decided = review.slipped_decisions ?? [];
     const decidedIds = new Set(decided.map((d) => d.task_id));
 
+    // Mid-week, only tasks already past due have slipped; a Thursday due date
+    // is not a slip on Wednesday. Reviewing a past week later, everything due
+    // by that week's Sunday counts.
+    const overdueBefore = today <= weekEnd ? today : addDays(weekEnd, 1);
     const { data: overdueRows } = await supabase
       .from("tasks")
       .select("*")
       .eq("status", "open")
       .eq("is_mirror", false)
       .not("due_date", "is", null)
-      .lte("due_date", weekEnd)
+      .lt("due_date", overdueBefore)
       .order("due_date", { ascending: true });
 
     const overdue = ((overdueRows ?? []) as Task[]).filter((t) => !decidedIds.has(t.id));
