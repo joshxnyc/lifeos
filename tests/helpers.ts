@@ -27,6 +27,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     calendar_event_id: null,
     is_mirror: false,
     sort_order: 0,
+    duration_minutes: null,
     ...overrides,
   };
 }
