@@ -34,24 +34,37 @@ const serwist = new Serwist({
 
 serwist.addEventListeners();
 
-// Web Push: show the notification and deep-link on tap (SPEC §8).
+// Web Push: show the notification and deep-link on tap (SPEC §8). task_due
+// payloads carry action buttons ("Done", "Snooze 1h"); TypeScript's lib types
+// don't know `actions` on NotificationOptions, but every SW notification is
+// persistent, so passing it is valid — platforms without buttons ignore it and
+// a body tap still opens the URL.
+interface PushPayload {
+  title?: string;
+  body?: string;
+  url?: string;
+  tag?: string;
+  actions?: { action: string; title: string }[];
+  task_id?: string;
+}
+
 self.addEventListener("push", (event) => {
   if (!event.data) return;
-  let payload: { title?: string; body?: string; url?: string; tag?: string } = {};
+  let payload: PushPayload = {};
   try {
     payload = event.data.json();
   } catch {
     payload = { body: event.data.text() };
   }
-  event.waitUntil(
-    self.registration.showNotification(payload.title ?? "LifeOS", {
-      body: payload.body ?? "",
-      tag: payload.tag,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      data: { url: payload.url ?? "/today" },
-    }),
-  );
+  const options: NotificationOptions & { actions?: { action: string; title: string }[] } = {
+    body: payload.body ?? "",
+    tag: payload.tag,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: payload.url ?? "/today", task_id: payload.task_id },
+  };
+  if (payload.actions?.length && payload.task_id) options.actions = payload.actions;
+  event.waitUntil(self.registration.showNotification(payload.title ?? "LifeOS", options));
 });
 
 // Push services rotate subscriptions (key expiry, service maintenance). When
@@ -123,17 +136,51 @@ async function findServerKey(): Promise<ArrayBuffer | null> {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url: string = event.notification.data?.url ?? "/today";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client) {
-          client.focus();
-          if ("navigate" in client) client.navigate(url);
-          return;
-        }
-      }
-      return self.clients.openWindow(url);
-    }),
-  );
+  const data = (event.notification.data ?? {}) as { url?: string; task_id?: string };
+  const url = data.url ?? "/today";
+
+  // Action buttons act without opening the app; a body tap (empty action, and
+  // the only path on platforms without buttons) opens the notification's URL.
+  if ((event.action === "complete" || event.action === "snooze") && data.task_id) {
+    event.waitUntil(actOnTask(event.action, data.task_id, url));
+    return;
+  }
+  event.waitUntil(openApp(url));
 });
+
+/**
+ * POST the action to the app; session cookies ride along. On any failure
+ * (offline, signed out, server error) be honest: a fallback notification says
+ * it didn't happen and links to the task.
+ */
+async function actOnTask(action: "complete" | "snooze", taskId: string, url: string): Promise<void> {
+  try {
+    const res = await fetch("/api/push/act", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, task_id: taskId }),
+    });
+    if (!res.ok) throw new Error(`act ${res.status}`);
+  } catch {
+    await self.registration.showNotification("LifeOS", {
+      body: "Couldn't reach LifeOS — open the app.",
+      tag: `push-act-failed-${taskId}`,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url },
+    });
+  }
+}
+
+async function openApp(url: string): Promise<void> {
+  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const client of clients) {
+    if ("focus" in client) {
+      await client.focus();
+      if ("navigate" in client) await client.navigate(url);
+      return;
+    }
+  }
+  await self.clients.openWindow(url);
+}

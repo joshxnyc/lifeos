@@ -429,18 +429,24 @@ export async function undoAcceptSuggestion(id: string): Promise<ActionResult> {
  * Undo a dismiss (the toast's Undo action). Setting the row back to pending
  * also takes it out of the extractor's 30-day dismissed dedupe set — that set
  * is just a status query over recent suggestions — so nothing else needs
- * reversing and the card simply reappears in the queue.
+ * reversing and the card simply reappears in the queue. Any reason picked in
+ * the strip is cleared too: an undone dismissal should teach nothing.
  */
-export async function undoDismissSuggestion(id: string): Promise<void> {
-  const { supabase } = await session();
-  if (!z.string().uuid().safeParse(id).success) throw new Error("Unknown suggestion.");
+export async function undoDismissSuggestion(id: string): Promise<ActionResult> {
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Unknown suggestion." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
   const { error } = await supabase
     .from("suggestions")
-    .update({ status: "pending", resolved_at: null })
+    .update({ status: "pending", resolved_at: null, dismissed_reason: null })
     .eq("id", id)
     .eq("status", "dismissed");
-  if (error) throw new Error(`undo: ${error.message}`);
+  if (error) return { ok: false, error: `undo: ${error.message}` };
   revalidatePath("/queue");
+  return { ok: true };
 }
 
 async function fallbackDomainId(
