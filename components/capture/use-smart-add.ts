@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "@/components/tasks/toast";
 import { isPhone, postCapture } from "@/components/capture/send";
 import { waitForCaptureRow } from "@/components/capture/wait";
+import { isNetworkError, queueCapture } from "@/components/capture/offline-queue";
 import type { CaptureResult } from "@/lib/types";
 
 /** Typed captures are filed inline by the route, so this rarely loops twice. */
@@ -58,8 +59,8 @@ export function useSmartAdd() {
       if (!text || inFlight.current) return false;
       inFlight.current = true;
       setWorking(true);
+      const source = isPhone() ? "phone_text" : "desktop_text";
       try {
-        const source = isPhone() ? "phone_text" : "desktop_text";
         const captureId = await postCapture({ text, source });
 
         const row = await waitForCaptureRow(supabase, captureId, {
@@ -81,6 +82,17 @@ export function useSmartAdd() {
         toast(clarification ? `${summary}. ${clarification}` : summary);
         return true;
       } catch (err) {
+        // Offline is not failure: park it and the shell flusher sends it when
+        // the network returns. The text is safe, so the field may clear.
+        if (isNetworkError(err)) {
+          const outcome = await queueCapture({ source, text });
+          toast(
+            outcome === "stored"
+              ? "Saved offline. Will send when back online."
+              : "Saved offline in this tab only. Keep it open until you are back online.",
+          );
+          return true;
+        }
         toast(err instanceof Error ? err.message : "Adding failed. Try again.");
         return false;
       } finally {

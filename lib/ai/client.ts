@@ -15,6 +15,27 @@ export const MODEL_CHEAP = "anthropic/claude-haiku-4.5";
 /** Audio-capable model used for voice-capture transcription. */
 export const MODEL_AUDIO = "google/gemini-3.8-flash";
 
+/**
+ * System message with Anthropic prompt caching (via OpenRouter's cache_control
+ * pass-through). The stable prefix — rules + the context block — is reused
+ * across every item in an extraction sweep and across back-to-back captures,
+ * cutting the repeated input cost by roughly 10x. Volatile text (the item
+ * being processed, its random delimiters) always goes in the user message,
+ * never here. Non-Anthropic models get the plain string.
+ */
+function systemMessage(
+  model: string,
+  system: string,
+): OpenAI.Chat.ChatCompletionMessageParam {
+  if (!model.startsWith("anthropic/")) return { role: "system", content: system };
+  return {
+    role: "system",
+    content: [
+      { type: "text", text: system, cache_control: { type: "ephemeral" } } as never,
+    ],
+  };
+}
+
 let client: OpenAI | null = null;
 export function openrouter(): OpenAI {
   if (!client) {
@@ -95,7 +116,7 @@ export async function callStructured<T>(opts: StructuredCallOptions): Promise<T>
     model,
     max_tokens: opts.maxTokens ?? 4096,
     messages: [
-      { role: "system", content: opts.system },
+      systemMessage(model, opts.system),
       { role: "user", content: opts.userContent },
     ],
     tools: [
@@ -157,7 +178,7 @@ export async function callText(opts: {
     model,
     max_tokens: opts.maxTokens ?? 2048,
     messages: [
-      { role: "system", content: opts.system },
+      systemMessage(model, opts.system),
       { role: "user", content: opts.userContent },
     ],
     // @ts-expect-error OpenRouter extension not in the OpenAI types

@@ -75,7 +75,7 @@ export function AccountsSection({
                 Calendars
               </Link>
               <Link
-                href="/api/auth/google/start"
+                href={`/api/auth/google/start?account=${a.id}`}
                 prefetch={false}
                 className="inline-flex h-11 items-center rounded-card px-2 text-[14px] text-accent"
               >

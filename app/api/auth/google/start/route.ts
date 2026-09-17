@@ -20,6 +20,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/settings?error=google_not_configured", req.url));
   }
 
+  // Reconnect (?account=<id>): pre-select the identity being repaired, so a
+  // browser signed into several Google accounts doesn't quietly re-consent
+  // the wrong one and leave the dead row stuck on needs_reauth.
+  let loginHint: string | undefined;
+  const accountId = req.nextUrl.searchParams.get("account");
+  if (accountId) {
+    const { data } = await supabase
+      .from("connected_accounts")
+      .select("external_identity")
+      .eq("id", accountId)
+      .eq("provider", "google")
+      .maybeSingle();
+    loginHint = (data?.external_identity as string | undefined) || undefined;
+  }
+
   const nonce = newNonce();
   const url = newOAuthClient().generateAuthUrl({
     access_type: "offline",
@@ -27,6 +42,7 @@ export async function GET(req: NextRequest) {
     include_granted_scopes: true,
     scope: [...GOOGLE_SCOPES],
     state: signState(nonce),
+    ...(loginHint ? { login_hint: loginHint } : {}),
   });
 
   const res = NextResponse.redirect(url);

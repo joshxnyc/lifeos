@@ -1,6 +1,8 @@
 import "server-only";
 import { google, type Auth, type calendar_v3 } from "googleapis";
+import { fromZonedTime } from "date-fns-tz";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSettings } from "@/lib/settings";
 import { mergeSyncState } from "@/lib/integrations/accounts";
 import { errorStatus } from "@/lib/integrations/google/client";
 import { upsertSourceItem, type SourceParticipant } from "@/lib/integrations/source-items";
@@ -39,6 +41,10 @@ export async function syncCalendarsForAccount(opts: {
   const cal = google.calendar({ version: "v3", auth });
   const state = (account.sync_state ?? {}) as { calendar_sync_tokens?: Record<string, string> };
   const tokens: Record<string, string> = { ...(state.calendar_sync_tokens ?? {}) };
+  // All-day events carry a bare date; it means that day in Joshua's timezone,
+  // not UTC — storing it as UTC midnight put them on the previous evening in
+  // New York and off Today's local-day window entirely.
+  const { timezone } = await getSettings(supabase, userId);
 
   const stats: CalendarStats = {
     calendars: 0,
@@ -89,7 +95,7 @@ export async function syncCalendarsForAccount(opts: {
       }
 
       for (const ev of res.data.items ?? []) {
-        const outcome = await upsertEvent({ supabase, userId, account, calendarId, ev });
+        const outcome = await upsertEvent({ supabase, userId, account, calendarId, ev, timezone });
         if (outcome === "deleted") stats.events_deleted += 1;
         else {
           stats.events_upserted += 1;
@@ -115,8 +121,9 @@ async function upsertEvent(opts: {
   account: ConnectedAccount;
   calendarId: string;
   ev: calendar_v3.Schema$Event;
+  timezone: string;
 }): Promise<"created" | "changed" | "unchanged" | "deleted"> {
-  const { supabase, userId, account, calendarId, ev } = opts;
+  const { supabase, userId, account, calendarId, ev, timezone } = opts;
   if (!ev.id) return "unchanged";
 
   const { data: existing } = await supabase
@@ -136,8 +143,8 @@ async function upsertEvent(opts: {
   }
 
   const allDay = Boolean(ev.start?.date);
-  const startsAt = toIso(ev.start);
-  const endsAt = toIso(ev.end) ?? startsAt;
+  const startsAt = toIso(ev.start, timezone);
+  const endsAt = toIso(ev.end, timezone) ?? startsAt;
   if (!startsAt || !endsAt) return "unchanged";
 
   const attendees = (ev.attendees ?? []).map((a) => ({
@@ -210,10 +217,18 @@ async function upsertEvent(opts: {
   return "created";
 }
 
-function toIso(when: calendar_v3.Schema$EventDateTime | undefined): string | null {
+function toIso(when: calendar_v3.Schema$EventDateTime | undefined, timezone: string): string | null {
   if (!when) return null;
   if (when.dateTime) return new Date(when.dateTime).toISOString();
-  if (when.date) return new Date(`${when.date}T00:00:00Z`).toISOString();
+  if (when.date) {
+    // A bare date is "that whole day, locally". Google also sends the event's
+    // own zone sometimes — prefer it, else Joshua's.
+    try {
+      return fromZonedTime(`${when.date}T00:00:00`, when.timeZone || timezone).toISOString();
+    } catch {
+      return new Date(`${when.date}T00:00:00Z`).toISOString();
+    }
+  }
   return null;
 }
 

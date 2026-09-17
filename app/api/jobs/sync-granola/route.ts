@@ -55,10 +55,17 @@ export const POST = jobRoute("sync-granola", async ({ supabase, userId }) => {
   let notes = 0;
   let changed = 0;
   let newest = state.created_after ?? null;
+  // A run cut short must not advance the cursor past notes it never fetched;
+  // the 2-day overlap only protects against late summaries, not a >MAX_NOTES
+  // backlog (e.g. the first sync of a busy month).
+  let truncated = false;
 
   try {
     for await (const note of client.listNotes(since)) {
-      if (notes >= MAX_NOTES || Date.now() > deadline) break;
+      if (notes >= MAX_NOTES || Date.now() > deadline) {
+        truncated = true;
+        break;
+      }
       notes += 1;
 
       const text = [
@@ -96,8 +103,8 @@ export const POST = jobRoute("sync-granola", async ({ supabase, userId }) => {
     return { adapter: client.adapter, notes, changed, error: message, ms: Date.now() - started };
   }
 
-  if (newest) await mergeSyncState(supabase, account.id, { created_after: newest });
+  if (newest && !truncated) await mergeSyncState(supabase, account.id, { created_after: newest });
   await markSynced(supabase, account.id);
 
-  return { adapter: client.adapter, notes, changed, cursor: newest, ms: Date.now() - started };
+  return { adapter: client.adapter, notes, changed, truncated, cursor: newest, ms: Date.now() - started };
 });

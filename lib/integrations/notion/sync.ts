@@ -148,11 +148,26 @@ export async function syncNotion(opts: {
     }
   };
 
+  // The cursor may only advance when this run saw everything: a run cut short
+  // by the page budget or the deadline has pages older than `newest` still
+  // unfetched, and advancing past them would skip them forever. On a
+  // truncated run the cursor stays put — re-fetches are free (content-hash
+  // upserts) and the next run continues from the same spot.
+  let truncated = false;
+  const outOfRoom = () => {
+    if (Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET) {
+      truncated = true;
+      return true;
+    }
+    return false;
+  };
+
   // 1. Everything shared with the integration, newest edit first, stopping at
   //    the cursor (SPEC §6.2: search filtered by last_edited_time > cursor).
   const pages = await searchShared({ objectType: "page", since: cursor, limit: PAGE_BUDGET });
+  if (pages.length >= PAGE_BUDGET) truncated = true; // search itself may have more
   for (const page of pages) {
-    if (Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET) break;
+    if (outOfRoom()) break;
     const dbConfig = page.parent_database_id
       ? config.databases.find((d) => normalizeId(d.id) === normalizeId(page.parent_database_id ?? ""))
       : undefined;
@@ -162,12 +177,13 @@ export async function syncNotion(opts: {
   // 2. Each configured database, so task-like rows are never missed even if
   //    search paging cut them off.
   for (const db of config.databases) {
-    if (Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET) break;
+    if (outOfRoom()) break;
     stats.databases_queried += 1;
     try {
       const rows = await queryDatabase(db.id, cursor, PAGE_BUDGET);
+      if (rows.length >= PAGE_BUDGET) truncated = true;
       for (const row of rows) {
-        if (Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET) break;
+        if (outOfRoom()) break;
         await ingest(row, db);
       }
     } catch (err) {
@@ -179,7 +195,7 @@ export async function syncNotion(opts: {
     }
   }
 
-  if (newest && newest !== cursor) {
+  if (!truncated && newest && newest !== cursor) {
     await mergeSyncState(supabase, account.id, { last_edited_cursor: newest });
   }
   await markSynced(supabase, account.id);

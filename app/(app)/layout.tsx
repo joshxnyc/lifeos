@@ -4,6 +4,7 @@ import { BottomTabs } from "@/components/shell/bottom-tabs";
 import { Sidebar } from "@/components/shell/sidebar";
 import { CommandPaletteLazy } from "@/components/shell/command-palette-lazy";
 import { GlobalRecord } from "@/components/capture/global-record";
+import { AppLifecycle } from "@/components/shell/app-lifecycle";
 import type { Domain, Project } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <BottomTabs />
       <GlobalRecord />
+      <AppLifecycle />
       <CommandPaletteLazy
         domains={(domains ?? []) as Domain[]}
         projects={(projects ?? []) as Project[]}
