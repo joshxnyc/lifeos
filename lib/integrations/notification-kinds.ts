@@ -14,6 +14,7 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   "review_prompt",
   "queue_digest",
   "follow_up_due",
+  "task_due",
   "needs_reauth",
   "sync_failed",
 ];
@@ -26,6 +27,7 @@ export const NOTIFICATION_KIND_LABELS: Record<string, string> = {
   review_prompt: "Weekly review prompt",
   queue_digest: "Queue digest",
   follow_up_due: "Follow-up due",
+  task_due: "Task deadlines",
   needs_reauth: "Account needs reconnecting",
   sync_failed: "Sync failures",
 };

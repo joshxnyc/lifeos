@@ -625,3 +625,13 @@ create policy captures_owner_all on storage.objects
 --   ('app_url', 'https://YOUR-DOMAIN'),
 --   ('jobs_secret', 'YOUR_JOBS_SECRET')
 -- on conflict (key) do update set value = excluded.value;
+
+-- ---------------------------------------------------------------------------
+-- 2026-09-17: task deadline pushes ('task_due' notification kind).
+-- Standalone block — safe to paste on its own into the Supabase SQL editor,
+-- and safe to run twice (the drop tolerates a missing constraint; the add
+-- recreates the same one). Mirrors supabase/migrations/20260917000005_task_due.sql.
+-- ---------------------------------------------------------------------------
+alter table public.notifications drop constraint if exists notifications_kind_check;
+alter table public.notifications add constraint notifications_kind_check
+  check (kind in ('morning_brief', 'routine_reminder', 'routine_missed', 'evening_closeout', 'review_prompt', 'queue_digest', 'follow_up_due', 'needs_reauth', 'sync_failed', 'task_due', 'custom', 'test'));

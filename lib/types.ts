@@ -19,7 +19,7 @@ export type AccountStatus = "active" | "needs_reauth" | "disabled";
 export type NotificationKind =
   | "morning_brief" | "routine_reminder" | "routine_missed" | "evening_closeout"
   | "review_prompt" | "queue_digest" | "follow_up_due" | "needs_reauth"
-  | "sync_failed" | "custom" | "test";
+  | "sync_failed" | "task_due" | "custom" | "test";
 export type NotificationStatus = "scheduled" | "sent" | "failed" | "cancelled";
 
 interface Base {
