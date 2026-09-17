@@ -270,6 +270,36 @@ export async function dismissSuggestion(id: string): Promise<void> {
   revalidatePath("/queue");
 }
 
+const dismissalReasonSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.enum(["not_a_task", "already_done", "not_mine", "wrong_details", "other"]),
+});
+
+/**
+ * The optional second tap after a dismiss: the reason strip PATCHes why onto
+ * the just-dismissed row. Only rows sitting at `dismissed` take a reason — if
+ * Undo already reopened the card, this quietly updates nothing, which is the
+ * right outcome for a late tap. The reason feeds the extraction prompt.
+ */
+export async function setDismissalReason(id: string, reason: DismissedReason): Promise<ActionResult> {
+  const parsed = dismissalReasonSchema.safeParse({ id, reason });
+  if (!parsed.success) return { ok: false, error: "That reason isn't valid." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { error } = await supabase
+    .from("suggestions")
+    .update({ dismissed_reason: parsed.data.reason })
+    .eq("id", parsed.data.id)
+    .eq("status", "dismissed");
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 /**
  * Undo an accept (the toast's Undo action): reverse what accept wrote for
  * this kind, then return the suggestion to pending so the card reappears.
