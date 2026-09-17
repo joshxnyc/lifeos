@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromZonedTime } from "date-fns-tz";
-import { callStructured, loadPrompt } from "@/lib/ai/client";
+import { callStructured, DailyAiBudgetError, loadPrompt } from "@/lib/ai/client";
 import { buildContext } from "@/lib/ai/context";
 import { enqueueNotification } from "@/lib/notify";
 import { getSettings } from "@/lib/settings";
@@ -193,10 +193,13 @@ export async function planMorning(
       proposedIds = [top, ...runners];
       reason = (result.reason ?? "").trim().slice(0, 200) || heuristicReason(fallbackTop, today);
       stats.used_llm = true;
-    } catch {
+    } catch (err) {
       proposedIds = candidates.slice(0, 3).map((t) => t.id);
       reason = heuristicReason(fallbackTop, today);
-      stats.llm_failed = true;
+      // The heuristic proposal still lands either way; the stats just say why
+      // the model sat this one out.
+      if (err instanceof DailyAiBudgetError) stats.skipped = "daily budget";
+      else stats.llm_failed = true;
     }
   }
 

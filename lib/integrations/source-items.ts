@@ -62,7 +62,7 @@ export async function upsertSourceItem(
 
   const { data: existing } = await supabase
     .from("source_items")
-    .select("id, content_hash, domain_id")
+    .select("id, content_hash, domain_id, extracted_upto:raw->extracted_upto")
     .eq("provider", item.provider)
     .eq("external_id", item.externalId)
     .maybeSingle();
@@ -86,7 +86,7 @@ export async function upsertSourceItem(
         .update({
           title: item.title,
           text: item.text,
-          raw: item.raw ?? null,
+          raw: withExtractedUpto(item.raw ?? null, item.kind, existing.extracted_upto),
           participants,
           occurred_at: item.occurredAt ?? null,
           external_url: item.externalUrl ?? null,
@@ -141,6 +141,18 @@ export async function upsertSourceItem(
   }
 
   return { id, changed };
+}
+
+/**
+ * Carry the extractor's progress marker across re-fetches. extract.ts records
+ * `raw.extracted_upto` on email threads after a successful pass so a new reply
+ * only sends the tail to the model; the adapters rebuild `raw` from the
+ * provider payload, which would silently drop it here on every update.
+ */
+function withExtractedUpto(raw: unknown, kind: SourceKind, priorUpto: unknown): unknown {
+  if (kind !== "email_thread" || typeof priorUpto !== "number") return raw;
+  const base = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw : {};
+  return { ...base, extracted_upto: priorUpto };
 }
 
 async function resolveDefaultDomain(

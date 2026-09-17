@@ -123,6 +123,20 @@ export function CapturePanel({
     else setPhase("idle");
   };
 
+  // Already mounted when a Review link lands (?capture=<id> while on /capture):
+  // switch to that capture without losing an in-progress recording.
+  useEffect(() => {
+    if (!initialCaptureId || initialCaptureId === captureId) return;
+    if (phase === "recording") return;
+    setCaptureId(initialCaptureId);
+    setRow(null);
+    setMeta({});
+    setProblem(null);
+    setOfflineNote(null);
+    setPhase("working");
+    beginWork();
+  }, [initialCaptureId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- sending -------------------------------------------------------------
 
   /** Park a capture the network refused, and say where it went. */
@@ -316,6 +330,10 @@ export function CapturePanel({
   };
 
   const reset = () => {
+    // Drop a ?capture= param so a reload does not resurrect the result view.
+    if (typeof window !== "undefined" && window.location.search.includes("capture=")) {
+      window.history.replaceState(null, "", "/capture");
+    }
     setPhase("idle");
     setCaptureId(null);
     setRow(null);
@@ -459,6 +477,11 @@ export function CapturePanel({
             <p className="tabular mb-4 text-center font-mono text-[13px] text-ink-2">
               {phase === "recording" ? formatElapsed(recorder.elapsedMs) : "0:00"}
             </p>
+            {phase === "recording" && recorder.elapsedMs >= RECORDING_COUNTDOWN_FROM_MS ? (
+              <p className="tabular -mt-3 mb-4 text-center font-mono text-[13px] text-ink-2">
+                Stops in {formatElapsed(Math.max(0, RECORDING_LIMIT_MS - recorder.elapsedMs))}
+              </p>
+            ) : null}
             <Waveform analyser={recorder.analyser} active={phase === "recording"} />
           </div>
 

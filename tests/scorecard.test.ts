@@ -459,3 +459,186 @@ describe("computeScorecard — defaults", () => {
     expect(card.total.completed).toBe(1);
   });
 });
+
+describe("computeScorecard — partial week (card computed mid-week)", () => {
+  it("does not count days after as_of as scheduled or missed", () => {
+    // Wednesday of the review week: only Mon and Tue have happened.
+    const card = computeScorecard(
+      input({
+        as_of: "2026-09-09",
+        routines: [
+          {
+            id: "r-vitamins",
+            name: "Vitamins",
+            schedule_days: [0, 1, 2, 3, 4, 5, 6],
+            logs: [
+              { date: "2026-09-07", status: "done" },
+              { date: "2026-09-08", status: "done" },
+            ],
+          },
+        ],
+      }),
+    );
+    // Wed (as_of) has no log yet, so it is pending, not missed.
+    expect(card.routines[0]).toMatchObject({ scheduled: 2, done: 2, skipped: 0, missed: 0 });
+    expect(card.routines[0]?.adherence).toBe(1);
+  });
+
+  it("still counts an unlogged past day of the partial week as missed", () => {
+    const card = computeScorecard(
+      input({
+        as_of: "2026-09-09",
+        routines: [
+          {
+            id: "r-vitamins",
+            name: "Vitamins",
+            schedule_days: [0, 1, 2, 3, 4, 5, 6],
+            logs: [{ date: "2026-09-07", status: "done" }],
+          },
+        ],
+      }),
+    );
+    expect(card.routines[0]).toMatchObject({ scheduled: 2, done: 1, missed: 1 });
+    expect(card.routines[0]?.adherence).toBe(0.5);
+  });
+
+  it("counts a day logged done on as_of itself", () => {
+    const card = computeScorecard(
+      input({
+        as_of: "2026-09-09",
+        routines: [
+          {
+            id: "r-vitamins",
+            name: "Vitamins",
+            schedule_days: [0, 1, 2, 3, 4, 5, 6],
+            logs: [
+              { date: "2026-09-07", status: "missed" },
+              { date: "2026-09-08", status: "skipped" },
+              { date: "2026-09-09", status: "done" },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(card.routines[0]).toMatchObject({ scheduled: 3, done: 1, skipped: 1, missed: 1 });
+    expect(card.routines[0]?.adherence).toBe(0.5);
+  });
+});
+
+describe("assembleScorecardInput", () => {
+  // The exact first-week shape: a deployment a couple of days old, a review
+  // opened on a Wednesday, nothing in any table yet.
+  function raw(overrides: Partial<ScorecardRawRows> = {}): ScorecardRawRows {
+    return {
+      week_start: "2026-09-14",
+      week_end: "2026-09-20",
+      timezone: "America/New_York",
+      // 18:00Z on Wed 2026-09-16 is 14:00 in New York, still the 16th.
+      now: "2026-09-16T18:00:00Z",
+      domains: [],
+      tasks: [],
+      suggestions: [],
+      routines: [],
+      routine_logs: [],
+      captures: [],
+      calendar_events: [],
+      people_overdue_followup: 0,
+      previous_scorecards: [],
+      ...overrides,
+    };
+  }
+
+  it("computes an all-zero card from completely empty rows without throwing", () => {
+    const card = computeScorecard(assembleScorecardInput(raw()));
+    expect(card.total).toEqual({ created: 0, completed: 0, dropped: 0, open: 0, overdue_at_week_end: 0 });
+    expect(card.routines).toEqual([]);
+    expect(card.queue).toEqual({
+      received: 0,
+      accepted: 0,
+      dismissed: 0,
+      pending_at_week_end: 0,
+      median_hours_to_resolve: null,
+    });
+    expect(card.captures).toEqual({ count: 0, needed_clarification: 0 });
+    expect(card.meeting_hours_by_domain).toEqual({});
+    expect(card.deltas.vs_prev_weeks).toEqual([]);
+    expect(card.deltas.vs_4wk_avg).toEqual({ completed: null, on_time_rate: null, adherence: null });
+  });
+
+  it("clamps as_of to the local today when the week is still in progress", () => {
+    expect(assembleScorecardInput(raw()).as_of).toBe("2026-09-16");
+    // A card recomputed after the week keeps as_of at the week's Sunday.
+    expect(assembleScorecardInput(raw({ now: "2026-10-01T12:00:00Z" })).as_of).toBe("2026-09-20");
+  });
+
+  it("attaches routine logs to their routines and lists every domain", () => {
+    const input = assembleScorecardInput(
+      raw({
+        domains: [{ id: PERSONAL }, { id: TARIFA }],
+        routines: [
+          { id: "r-gym", name: "Gym", schedule_days: [1, 3, 5] },
+          { id: "r-vitamins", name: "Vitamins", schedule_days: [0, 1, 2, 3, 4, 5, 6] },
+        ],
+        routine_logs: [
+          { routine_id: "r-gym", date: "2026-09-14", status: "done" },
+          { routine_id: "r-vitamins", date: "2026-09-14", status: "done" },
+          { routine_id: "r-vitamins", date: "2026-09-15", status: "skipped" },
+        ],
+      }),
+    );
+    expect(input.domain_ids).toEqual([PERSONAL, TARIFA]);
+    expect(input.routines.find((r) => r.id === "r-gym")?.logs).toEqual([
+      { date: "2026-09-14", status: "done" },
+    ]);
+    expect(input.routines.find((r) => r.id === "r-vitamins")?.logs).toHaveLength(2);
+
+    const card = computeScorecard(input);
+    expect(card.domains[PERSONAL]).toEqual({
+      created: 0,
+      completed: 0,
+      dropped: 0,
+      open: 0,
+      overdue_at_week_end: 0,
+    });
+    // Mid-week on Wednesday: gym had Mon only; vitamins Mon done, Tue skipped.
+    expect(card.routines.find((r) => r.routine_id === "r-gym")).toMatchObject({
+      scheduled: 1,
+      done: 1,
+      adherence: 1,
+    });
+    expect(card.routines.find((r) => r.routine_id === "r-vitamins")).toMatchObject({
+      scheduled: 2,
+      done: 1,
+      skipped: 1,
+      adherence: 1,
+    });
+  });
+
+  it("summarizes whole previous scorecards into previous_weeks", () => {
+    const previousCard = computeScorecard(
+      input({
+        tasks: [{ ...baseTask, status: "done", completed_at: "2026-09-09T15:00:00Z" }],
+      }),
+    );
+    const card = computeScorecard(
+      assembleScorecardInput(raw({ previous_scorecards: [previousCard] })),
+    );
+    expect(card.deltas.vs_prev_weeks).toEqual([
+      { week_start: WEEK_START, completed: 1, on_time_rate: null, adherence: null },
+    ]);
+    expect(card.deltas.vs_4wk_avg.completed).toBe(-1);
+  });
+
+  it("buckets calendar events without a domain under unassigned", () => {
+    const card = computeScorecard(
+      assembleScorecardInput(
+        raw({
+          calendar_events: [
+            { starts_at: "2026-09-15T13:00:00Z", ends_at: "2026-09-15T14:00:00Z", all_day: false },
+          ],
+        }),
+      ),
+    );
+    expect(card.meeting_hours_by_domain).toEqual({ [UNASSIGNED_DOMAIN_KEY]: 1 });
+  });
+});
