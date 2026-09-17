@@ -2,7 +2,7 @@ import { NextResponse, after, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { extForMime } from "@/lib/transcribe";
-import { processCapture } from "@/lib/ai/pipelines/file-capture";
+import { notifyIfCaptureFailed, processCapture } from "@/lib/ai/pipelines/file-capture";
 import type { CaptureSource } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -120,6 +120,13 @@ export async function POST(req: NextRequest) {
       } catch {
         // Marked failed on the row; retryable from the capture screen.
       }
+      // A voice capture that lands `failed` here would otherwise fail in
+      // silence: the cron sweep never re-claims failed rows, and the person
+      // may have pocketed the phone right after recording. Same push (and
+      // same per-capture daily dedupe) as the sweep. The inline text path
+      // above does not notify — its failure is on screen when the response
+      // returns.
+      await notifyIfCaptureFailed(supabase, user.id, captureId);
     });
   }
 

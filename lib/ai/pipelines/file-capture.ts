@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { callStructured, callText, loadPrompt, MODEL_CHEAP } from "@/lib/ai/client";
 import { buildContext } from "@/lib/ai/context";
 import { getSettings } from "@/lib/settings";
+import { enqueueNotification } from "@/lib/notify";
 import { matchPersonInText } from "@/lib/domain/person-match";
 import { localDate } from "@/lib/time";
 import { mimeForExt, transcribeAudio, transcriptionPrompt } from "@/lib/transcribe";
@@ -118,6 +119,40 @@ interface FiledItemInput {
 interface FileCaptureOutput {
   items: FiledItemInput[];
   needs_clarification: string | null;
+}
+
+/**
+ * Push "A capture didn't file" when this capture now sits in `failed`. The
+ * status is read back from the row rather than inferred from a throw, because
+ * an empty capture lands `failed` without throwing. Deduped per capture per
+ * local day on payload.routine_id, so the capture route's after() path and a
+ * later cron retry of the same capture can both call this without spamming.
+ * Best-effort: alerting must never fail the caller.
+ */
+export async function notifyIfCaptureFailed(
+  supabase: SupabaseClient,
+  userId: string,
+  captureId: string,
+): Promise<boolean> {
+  try {
+    const { data: after } = await supabase
+      .from("captures")
+      .select("status, error")
+      .eq("id", captureId)
+      .single();
+    if (after?.status !== "failed") return false;
+    return await enqueueNotification(supabase, userId, {
+      kind: "custom",
+      title: "A capture didn't file",
+      body: ((after.error as string | null) ?? "Filing failed.").split("\n")[0]!.slice(0, 200),
+      url: "/capture",
+      scheduledFor: new Date(),
+      payload: { routine_id: `capture_failed:${captureId}` },
+      dedupeDaily: true,
+    });
+  } catch {
+    return false;
+  }
 }
 
 export async function processCapture(

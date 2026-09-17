@@ -82,6 +82,7 @@ async function enforceDailyBudget(
     const { data, error } = await supabase
       .from("ai_calls")
       .select("cost_estimate_usd.sum()")
+      .eq("user_id", userId) // the jobs' service client bypasses RLS
       .gte("created_at", dayStart.toISOString());
     if (error) throw new Error(error.message);
     spent = Number((data?.[0] as { sum?: number | string } | undefined)?.sum ?? 0) || 0;

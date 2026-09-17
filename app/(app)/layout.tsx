@@ -31,16 +31,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const timezone =
     typeof tzValue === "string" && tzValue ? tzValue : DEFAULT_SETTINGS.timezone;
   const today = localDate(new Date(), timezone);
+  // Mirrored Notion tasks are excluded: they can only be completed in Notion,
+  // so a stale Notion due date would inflate the badge with rows the app
+  // cannot act on (Today's list filters them the same way).
   const [{ count: overdueCount }, { count: dueTodayCount }] = await Promise.all([
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
       .eq("status", "open")
+      .eq("is_mirror", false)
       .lt("due_date", today),
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
       .eq("status", "open")
+      .eq("is_mirror", false)
       .eq("due_date", today),
   ]);
 

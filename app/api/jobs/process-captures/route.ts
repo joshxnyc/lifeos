@@ -1,7 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { jobRoute } from "@/lib/jobs";
-import { enqueueNotification } from "@/lib/notify";
-import { processCapture } from "@/lib/ai/pipelines/file-capture";
+import { notifyIfCaptureFailed, processCapture } from "@/lib/ai/pipelines/file-capture";
 
 export const maxDuration = 60;
 
@@ -68,37 +66,10 @@ export const POST = jobRoute("process-captures", async ({ supabase, userId, now 
     // reads `failed` now transitioned on THIS run — rows that failed on a
     // previous run are never candidates again. Read the row back rather than
     // trusting the throw: an empty capture lands `failed` without throwing.
-    if (await notifyIfJustFailed(supabase, userId, row.id)) notified += 1;
+    // (The daily per-capture dedupe inside the helper keeps a capture that
+    // already alerted from the after() path quiet.)
+    if (await notifyIfCaptureFailed(supabase, userId, row.id)) notified += 1;
   }
 
   return { scanned: rows.length, eligible: candidates.length, processed, failed, notified };
 });
-
-/** Push "A capture didn't file" for a row that just landed in failed. */
-async function notifyIfJustFailed(
-  supabase: SupabaseClient,
-  userId: string,
-  captureId: string,
-): Promise<boolean> {
-  try {
-    const { data: after } = await supabase
-      .from("captures")
-      .select("status, error")
-      .eq("id", captureId)
-      .single();
-    if (after?.status !== "failed") return false;
-    // dedupeDaily keys on payload.routine_id, so a retry of the same capture
-    // that fails again today stays quiet instead of spamming.
-    return await enqueueNotification(supabase, userId, {
-      kind: "custom",
-      title: "A capture didn't file",
-      body: ((after.error as string | null) ?? "Filing failed.").split("\n")[0]!.slice(0, 200),
-      url: "/capture",
-      scheduledFor: new Date(),
-      payload: { routine_id: `capture_failed:${captureId}` },
-      dedupeDaily: true,
-    });
-  } catch {
-    return false; // alerting must never fail the sweep itself
-  }
-}
