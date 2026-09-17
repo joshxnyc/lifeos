@@ -107,7 +107,7 @@ export function GlobalRecord() {
             role="dialog"
             aria-label="Recording"
             onClick={(e) => e.stopPropagation()}
-            className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper px-5 pt-4 pb-safe shadow-whisper"
+            className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper px-5 pt-4 pb-safe shadow-whisper supports-[backdrop-filter]:bg-paper/90 supports-[backdrop-filter]:backdrop-blur-xl"
           >
             <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-line" aria-hidden />
             <div className="mx-auto flex w-full max-w-sm flex-col items-center pb-6">
@@ -152,7 +152,7 @@ export function GlobalRecord() {
 
       {filing ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center md:bottom-8">
-          <span className="animate-sheet-up flex items-center rounded-full border border-line bg-raise px-4 py-2 text-[13px] text-ink shadow-whisper">
+          <span className="animate-sheet-up flex items-center rounded-full border border-line bg-raise px-4 py-2 text-[13px] text-ink shadow-whisper supports-[backdrop-filter]:bg-raise/85 supports-[backdrop-filter]:backdrop-blur-xl">
             <FilingIndicator label="Filing your capture…" />
           </span>
         </div>

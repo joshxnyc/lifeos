@@ -30,7 +30,6 @@ export class GranolaApiClient implements GranolaClient {
     do {
       const url = new URL(`${BASE}/notes`);
       url.searchParams.set("created_after", createdAfter);
-      url.searchParams.set("limit", "50");
       if (cursor) url.searchParams.set("cursor", cursor);
 
       const body = await this.get<{
@@ -39,6 +38,7 @@ export class GranolaApiClient implements GranolaClient {
         items?: RawNote[];
         next_cursor?: string | null;
         cursor?: string | null;
+        hasMore?: boolean;
         has_more?: boolean;
       }>(url.toString());
 
@@ -46,8 +46,9 @@ export class GranolaApiClient implements GranolaClient {
       for (const raw of rows) {
         const note = mapNote(raw);
         if (!note) continue;
-        // Transcripts are a separate fetch and only exist on paid plans; a
-        // failure there must not lose the summary.
+        // Transcripts are a separate fetch; a failure there must not lose the
+        // summary. An oversized transcript comes back 413 with a dedicated
+        // endpoint (docs.granola.ai) — fall through to it.
         if (!note.transcript) {
           try {
             const full = await this.get<RawNote>(
@@ -55,16 +56,34 @@ export class GranolaApiClient implements GranolaClient {
             );
             const withTranscript = mapNote(full);
             if (withTranscript?.transcript) note.transcript = withTranscript.transcript;
-          } catch {
-            // Basic/Business mismatch or a note still processing — ignore.
+          } catch (err) {
+            if (err instanceof Error && err.message.includes("413")) {
+              note.transcript = await this.fetchLargeTranscript(note.id);
+            }
+            // Anything else: a note still processing or scope-limited — keep
+            // the summary and move on.
           }
         }
         yield note;
       }
 
-      cursor = (body.next_cursor ?? body.cursor ?? undefined) || undefined;
+      const more = body.hasMore ?? body.has_more;
+      cursor =
+        more === false ? undefined : (body.next_cursor ?? body.cursor ?? undefined) || undefined;
       page += 1;
     } while (cursor && page < MAX_PAGES);
+  }
+
+  /** GET /notes/{id}/transcript — the fallback for 413 TRANSCRIPT_TOO_LARGE. */
+  private async fetchLargeTranscript(noteId: string): Promise<string | undefined> {
+    try {
+      const body = await this.get<{ transcript?: RawNote["transcript"] }>(
+        `${BASE}/notes/${encodeURIComponent(noteId)}/transcript`,
+      );
+      return flattenTranscript(body.transcript);
+    } catch {
+      return undefined;
+    }
   }
 
   private async get<T>(url: string): Promise<T> {
@@ -76,6 +95,12 @@ export class GranolaApiClient implements GranolaClient {
       headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
       cache: "no-store",
     });
+    if (res.status === 401 || res.status === 403) {
+      // Plain-language, because this lands verbatim in Settings → Granola.
+      throw new Error(
+        `Granola rejected the API key (${res.status}). Create a key in Granola → Settings → Connectors → API keys (Business plan, "Personal notes" scope), update GRANOLA_API_KEY in Vercel, and redeploy.`,
+      );
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`Granola API ${res.status}: ${text.slice(0, 200)}`);
@@ -83,6 +108,18 @@ export class GranolaApiClient implements GranolaClient {
     return (await res.json()) as T;
   }
 }
+
+/**
+ * A transcript segment's speaker varies by platform: a plain string, or an
+ * object (macOS carries speaker.source, iOS a diarization_label).
+ */
+interface RawSegment {
+  speaker?: string | { name?: string; label?: string; source?: string; diarization_label?: string };
+  diarization_label?: string;
+  text?: string;
+}
+
+type RawTranscript = string | RawSegment[] | { text?: string; segments?: RawSegment[] };
 
 interface RawNote {
   id?: string;
@@ -95,7 +132,7 @@ interface RawNote {
   notes?: string;
   my_notes?: string;
   user_notes?: string;
-  transcript?: string | { text?: string; segments?: Array<{ speaker?: string; text?: string }> };
+  transcript?: RawTranscript;
   attendees?: Array<{ name?: string; email?: string; display_name?: string }>;
   participants?: Array<{ name?: string; email?: string; display_name?: string }>;
   created_at?: string;
@@ -103,6 +140,26 @@ interface RawNote {
   meeting_at?: string;
   url?: string;
   share_url?: string;
+}
+
+/** One line per segment, "Speaker: text", tolerating every observed shape. */
+export function flattenTranscript(raw: RawTranscript | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === "string") return raw || undefined;
+  const segments = Array.isArray(raw) ? raw : (raw.segments ?? undefined);
+  if (!segments) {
+    return Array.isArray(raw) ? undefined : raw.text || undefined;
+  }
+  const lines = segments
+    .map((s) => {
+      const speaker =
+        typeof s.speaker === "string"
+          ? s.speaker
+          : (s.speaker?.name ?? s.speaker?.label ?? s.speaker?.diarization_label ?? s.speaker?.source ?? s.diarization_label);
+      return [speaker, s.text].filter(Boolean).join(": ");
+    })
+    .filter(Boolean);
+  return lines.length ? lines.join("\n") : undefined;
 }
 
 /** Defensive mapping: the API's exact field names are not contract-stable. */
@@ -115,14 +172,7 @@ export function mapNote(raw: RawNote): GranolaNote | null {
     email: a.email,
   }));
 
-  let transcript: string | undefined;
-  if (typeof raw.transcript === "string") transcript = raw.transcript;
-  else if (raw.transcript?.text) transcript = raw.transcript.text;
-  else if (raw.transcript?.segments) {
-    transcript = raw.transcript.segments
-      .map((s) => [s.speaker, s.text].filter(Boolean).join(": "))
-      .join("\n");
-  }
+  const transcript = flattenTranscript(raw.transcript);
 
   return {
     id,

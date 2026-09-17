@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BottomTabs } from "@/components/shell/bottom-tabs";
 import { Sidebar } from "@/components/shell/sidebar";
-import { CommandPalette } from "@/components/shell/command-palette";
+import { CommandPaletteLazy } from "@/components/shell/command-palette-lazy";
 import { GlobalRecord } from "@/components/capture/global-record";
 import type { Domain, Project } from "@/lib/types";
 
@@ -33,7 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <BottomTabs />
       <GlobalRecord />
-      <CommandPalette
+      <CommandPaletteLazy
         domains={(domains ?? []) as Domain[]}
         projects={(projects ?? []) as Project[]}
       />

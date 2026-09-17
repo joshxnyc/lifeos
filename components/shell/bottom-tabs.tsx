@@ -62,7 +62,7 @@ export function BottomTabs() {
           onClick={() => setMoreOpen(false)}
         >
           <div
-            className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper p-4 pb-safe shadow-whisper"
+            className="animate-sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl bg-paper p-4 pb-safe shadow-whisper supports-[backdrop-filter]:bg-paper/90 supports-[backdrop-filter]:backdrop-blur-xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Canvas 2b: a grab handle over a plain hairline-separated list,
@@ -84,7 +84,10 @@ export function BottomTabs() {
           </div>
         </div>
       ) : null}
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-paper pt-2 pb-safe md:hidden">
+      {/* Frosted chrome: solid paper stays the fallback; where backdrop-filter
+          exists the bar goes translucent over blurred page content. Opacity
+          stays ≥ .8 so labels keep contrast over arbitrary rows. */}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-paper pt-2 pb-safe supports-[backdrop-filter]:bg-paper/80 supports-[backdrop-filter]:backdrop-blur-xl md:hidden">
         <div className="flex items-end">
           {tab("/today", "Today", CalendarCheck)}
           {tab("/tasks", "Tasks", ListChecks)}

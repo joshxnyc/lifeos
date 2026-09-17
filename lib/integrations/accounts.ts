@@ -74,10 +74,14 @@ export async function setAccountError(
 }
 
 export async function markSynced(supabase: SupabaseClient, accountId: string): Promise<void> {
+  // A successful sync proves auth works, so a needs_reauth flag is stale —
+  // clear it. Disabled accounts never reach here, but guard anyway so a
+  // sync bug can never silently re-enable one.
   await supabase
     .from("connected_accounts")
-    .update({ last_synced_at: new Date().toISOString(), last_error: null })
-    .eq("id", accountId);
+    .update({ last_synced_at: new Date().toISOString(), last_error: null, status: "active" })
+    .eq("id", accountId)
+    .neq("status", "disabled");
 }
 
 /**

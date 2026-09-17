@@ -162,7 +162,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
           <div className="mx-auto w-full max-w-[680px] px-4" onClick={(e) => e.stopPropagation()}>
             <Command
               shouldFilter
-              className="animate-pop-in overflow-hidden rounded-card border border-line bg-paper shadow-whisper"
+              className="animate-pop-in overflow-hidden rounded-card border border-line bg-paper shadow-whisper supports-[backdrop-filter]:bg-paper/90 supports-[backdrop-filter]:backdrop-blur-xl"
             >
               <Command.Input
                 autoFocus

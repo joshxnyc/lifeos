@@ -237,6 +237,30 @@ body {
   animation: page-in 200ms ease-out;
 }
 
+/* Route-change skeleton (app/(app)/loading.tsx): paper-2 blocks that pulse by
+   opacity — no gradient sweep, nothing moves. The loop is infinite, so it is
+   gated on no-preference instead of leaning on the 0.01ms kill switch above
+   (an infinite 0.01ms animation flickers rather than stops); with reduced
+   motion the blocks simply hold still. */
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.skeleton-block {
+  border-radius: 6px;
+  background: var(--paper-2);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton-block {
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+}
+
 /* Task row completion: fade + collapse over 300ms (DESIGN_BRIEF §3 Motion). */
 @keyframes task-complete {
   0% {

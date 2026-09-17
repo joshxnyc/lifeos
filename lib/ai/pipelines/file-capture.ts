@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { callStructured, callText, loadPrompt, MODEL_CHEAP } from "@/lib/ai/client";
 import { buildContext } from "@/lib/ai/context";
 import { getSettings } from "@/lib/settings";
+import { matchPersonInText } from "@/lib/domain/person-match";
 import { localDate } from "@/lib/time";
 import { mimeForExt, transcribeAudio, transcriptionPrompt } from "@/lib/transcribe";
 import type { Capture, CaptureResult } from "@/lib/types";
@@ -292,17 +293,27 @@ async function createRows(
   // hallucinated id would otherwise fail the foreign key and lose the capture.
   const [projectRows, peopleRows, routineRows] = await Promise.all([
     supabase.from("projects").select("id").eq("user_id", userId),
-    supabase.from("people").select("id, notes_md").eq("user_id", userId),
+    supabase.from("people").select("id, name, notes_md").eq("user_id", userId),
     supabase.from("routines").select("id").eq("user_id", userId),
   ]);
   const projectIds = new Set((projectRows.data ?? []).map((r) => r.id as string));
-  const peopleById = new Map((peopleRows.data ?? []).map((r) => [r.id as string, r as { id: string; notes_md: string | null }]));
+  const peopleById = new Map(
+    (peopleRows.data ?? []).map((r) => [r.id as string, r as { id: string; name: string; notes_md: string | null }]),
+  );
+  const knownPeople = (peopleRows.data ?? []).map((r) => ({ id: r.id as string, name: r.name as string }));
   const routineIds = new Set((routineRows.data ?? []).map((r) => r.id as string));
 
   for (const item of output.items ?? []) {
     const domainId = item.domain_id && ctx.domainIds.has(item.domain_id) ? item.domain_id : ctx.personalDomainId;
     const projectId = item.project_id && projectIds.has(item.project_id) ? item.project_id : null;
-    const personId = item.person_id && peopleById.has(item.person_id) ? item.person_id : null;
+    let personId = item.person_id && peopleById.has(item.person_id) ? item.person_id : null;
+    // Safety net behind the prompt's "link known people" rule: when the model
+    // left person_id null but the text plainly names exactly one known
+    // person (whole word, unambiguous), link them anyway. Deterministic and
+    // conservative — see matchPersonInText.
+    if (!personId && (item.type === "task" || item.type === "reminder" || item.type === "note")) {
+      personId = matchPersonInText([item.title, item.body_md].filter(Boolean).join("\n"), knownPeople);
+    }
     if (projectId) touchedProjects.add(projectId);
 
     if (item.type === "task" || item.type === "reminder") {
@@ -418,7 +429,9 @@ async function createRows(
         if (person) {
           targetId = person.id as string;
           targetName = person.name as string;
-          peopleById.set(targetId, { id: targetId, notes_md: null });
+          peopleById.set(targetId, { id: targetId, name: targetName, notes_md: null });
+          // Later items in this same capture can now link to them too.
+          knownPeople.push({ id: targetId, name: targetName });
         }
       }
       if (!targetId) {
@@ -430,7 +443,11 @@ async function createRows(
       const line = `- [${today}] ${fact}`;
       const nextNotes = existing ? `${existing.trimEnd()}\n${line}` : line;
       await supabase.from("people").update({ notes_md: nextNotes }).eq("id", targetId);
-      peopleById.set(targetId, { id: targetId, notes_md: nextNotes });
+      peopleById.set(targetId, {
+        id: targetId,
+        name: targetName ?? peopleById.get(targetId)?.name ?? "",
+        notes_md: nextNotes,
+      });
 
       if (!targetName) {
         const { data: person } = await supabase.from("people").select("name").eq("id", targetId).single();
