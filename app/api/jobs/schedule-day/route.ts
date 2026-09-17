@@ -2,15 +2,17 @@ import { fromZonedTime } from "date-fns-tz";
 import { jobRoute } from "@/lib/jobs";
 import { getSettings } from "@/lib/settings";
 import { enqueueNotification } from "@/lib/notify";
-import { localDate, localDayOfWeek } from "@/lib/time";
-import type { Routine } from "@/lib/types";
+import { normalizeDueTime, taskDueLabel, taskReminderAt } from "@/lib/domain/task-reminders";
+import { addDays, localDate, localDayOfWeek } from "@/lib/time";
+import type { Routine, Task } from "@/lib/types";
 
 /**
- * Lays down today's routine pushes (SPEC §8, CONTRACTS notifications matrix).
- * Runs every 15 minutes rather than once, so a routine created at 10am still
- * gets its reminder today. Every row is keyed on an exact local timestamp, so
- * re-running enqueues nothing new: the unique dedupe index catches it and
- * enqueueNotification swallows the 23505.
+ * Lays down today's routine pushes and task deadline pushes (SPEC §8,
+ * CONTRACTS notifications matrix). Runs every 15 minutes rather than once, so
+ * a routine or task created at 10am still gets its reminder today. Every row
+ * is keyed on an exact local timestamp, so re-running enqueues nothing new:
+ * the unique dedupe index catches it and enqueueNotification swallows the
+ * 23505.
  */
 export const POST = jobRoute("schedule-day", async ({ supabase, userId, now }) => {
   const settings = await getSettings(supabase, userId);
