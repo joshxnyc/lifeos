@@ -10,10 +10,13 @@ export function Sidebar({
   domains,
   projects,
   queueCount,
+  taskCount,
 }: {
   domains: Domain[];
   projects: Project[];
   queueCount: number;
+  /** Open tasks overdue or due today, so the list reads at a glance. */
+  taskCount: number;
 }) {
   const pathname = usePathname();
 
@@ -49,7 +52,7 @@ export function Sidebar({
       <nav className="flex flex-col gap-0.5">
         {item("/today", "Today")}
         {item("/queue", "Queue", queueCount)}
-        {item("/tasks", "Tasks")}
+        {item("/tasks", "Tasks", taskCount)}
         {item("/capture", "Capture", undefined, "⌘J")}
         {item("/routines", "Routines")}
         {item("/people", "People")}

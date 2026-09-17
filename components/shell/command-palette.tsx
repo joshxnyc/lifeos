@@ -15,8 +15,58 @@ import { ParsedChips, parseSafely } from "@/components/tasks/quick-add";
 import { toast } from "@/components/tasks/toast";
 import { useSmartAdd } from "@/components/capture/use-smart-add";
 import { requestRecord } from "@/components/capture/global-record";
-import type { Domain, Project } from "@/lib/types";
+import type { Domain, Note, Person, Project, Task } from "@/lib/types";
 import type { PersonOption } from "@/components/tasks/types";
+
+type TaskHit = Pick<Task, "id" | "title" | "status" | "due_date">;
+type NoteHit = Pick<Note, "id" | "title">;
+type PersonHit = Pick<Person, "id" | "name" | "company" | "role" | "relationship">;
+
+interface ContentResults {
+  tasks: TaskHit[];
+  notes: NoteHit[];
+  people: PersonHit[];
+}
+
+const NO_RESULTS: ContentResults = { tasks: [], notes: [], people: [] };
+
+/**
+ * Live content search for the palette. Full-text first (websearch over the
+ * generated search_vector columns); when that matches nothing — stopword-only
+ * queries produce an empty tsquery, and a half-typed word never stems — fall
+ * back to ilike on title/name so prefix typing still finds things.
+ */
+async function searchContent(raw: string, signal: AbortSignal): Promise<ContentResults> {
+  const supabase = createClient();
+  const run = async (mode: "fts" | "ilike"): Promise<ContentResults> => {
+    let tasks = supabase.from("tasks").select("id, title, status, due_date");
+    let notes = supabase.from("notes").select("id, title");
+    let people = supabase.from("people").select("id, name, company, role, relationship");
+    if (mode === "fts") {
+      tasks = tasks.textSearch("search_vector", raw, { type: "websearch" });
+      notes = notes.textSearch("search_vector", raw, { type: "websearch" });
+      people = people.textSearch("search_vector", raw, { type: "websearch" });
+    } else {
+      const like = `%${raw.replace(/[%_\\]/g, "\\$&")}%`;
+      tasks = tasks.ilike("title", like);
+      notes = notes.ilike("title", like);
+      people = people.ilike("name", like);
+    }
+    const [t, n, p] = await Promise.all([
+      tasks.order("updated_at", { ascending: false }).limit(6).abortSignal(signal),
+      notes.order("updated_at", { ascending: false }).limit(4).abortSignal(signal),
+      people.order("last_contact_at", { ascending: false, nullsFirst: false }).limit(4).abortSignal(signal),
+    ]);
+    return {
+      tasks: (t.data ?? []) as TaskHit[],
+      notes: (n.data ?? []) as NoteHit[],
+      people: (p.data ?? []) as PersonHit[],
+    };
+  };
+  const fts = await run("fts");
+  if (fts.tasks.length || fts.notes.length || fts.people.length) return fts;
+  return run("ilike");
+}
 
 const NAV: Array<[string, string]> = [
   ["/today", "Today"],
@@ -56,6 +106,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
     () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
   );
   const [loaded, setLoaded] = useState(false);
+  const [results, setResults] = useState<ContentResults>(NO_RESULTS);
   const [, startTransition] = useTransition();
   const { smartAdd } = useSmartAdd();
   const router = useRouter();
@@ -91,6 +142,31 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
     })();
   }, [open, loaded]);
 
+  // Deep search: debounce, then query content from the browser. The abort on
+  // cleanup cancels the in-flight fetch, so a stale response can never land
+  // after a newer keystroke — and nothing here blocks typing.
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) {
+      setResults(NO_RESULTS);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void searchContent(q, controller.signal)
+        .then((r) => {
+          if (!controller.signal.aborted) setResults(r);
+        })
+        .catch(() => {
+          // Aborted or offline: keep whatever is showing rather than flicker.
+        });
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, query]);
+
   const domainOptions = useMemo(
     () => domains.map((d) => ({ id: d.id, slug: d.slug, name: d.name })),
     [domains],
@@ -109,6 +185,19 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
         today,
       }),
     [query, domainOptions, projectOptions, people, today],
+  );
+
+  // cmdk's own filter would score async content rows against the query text
+  // and drop them (their values are ids, not the matched content), so the
+  // palette filters for itself: shouldFilter is off and nav rows are matched
+  // here by substring, the way the built-in filter effectively did.
+  const navQ = query.trim().toLowerCase();
+  const navRows = NAV.filter(([, label]) => !navQ || label.toLowerCase().includes(navQ));
+  const domainRows = domains.filter(
+    (d) => !navQ || `domain ${d.name}`.toLowerCase().includes(navQ),
+  );
+  const projectRows = projects.filter(
+    (p) => !navQ || `project ${p.name}`.toLowerCase().includes(navQ),
   );
 
   const go = (href: string) => {
@@ -161,7 +250,7 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
         >
           <div className="mx-auto w-full max-w-[680px] px-4" onClick={(e) => e.stopPropagation()}>
             <Command
-              shouldFilter
+              shouldFilter={false}
               className="animate-pop-in overflow-hidden rounded-card border border-line bg-paper shadow-whisper supports-[backdrop-filter]:bg-paper/90 supports-[backdrop-filter]:backdrop-blur-xl"
             >
               <Command.Input
