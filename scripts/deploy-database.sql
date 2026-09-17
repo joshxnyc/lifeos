@@ -635,3 +635,14 @@ create policy captures_owner_all on storage.objects
 alter table public.notifications drop constraint if exists notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check
   check (kind in ('morning_brief', 'routine_reminder', 'routine_missed', 'evening_closeout', 'review_prompt', 'queue_digest', 'follow_up_due', 'needs_reauth', 'sync_failed', 'task_due', 'custom', 'test'));
+
+-- ---------------------------------------------------------------------------
+-- 2026-09-17: all-day events are now stored in the user's timezone, not UTC
+-- midnight. Drop the stored calendar sync tokens so the next sync does one
+-- windowed full pass and rewrites the timestamps of already-stored events.
+-- Safe to run twice. Mirrors supabase/migrations/20260917000006_all_day_resync.sql.
+-- ---------------------------------------------------------------------------
+update public.connected_accounts
+set sync_state = sync_state - 'calendar_sync_tokens'
+where provider = 'google'
+  and sync_state ? 'calendar_sync_tokens';
