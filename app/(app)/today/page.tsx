@@ -77,7 +77,9 @@ export default async function TodayPage({
       .eq("status", "pending"),
     supabase
       .from("connected_accounts")
-      .select("id, provider, status, writable_calendar_id, default_domain_id"),
+      .select(
+        "id, provider, label, status, writable_calendar_id, default_domain_id, last_synced_at, last_error, created_at",
+      ),
     supabase
       .from("routines")
       .select("*")

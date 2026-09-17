@@ -301,8 +301,16 @@ export async function runWeeklyCoach(
   const context = await buildContext(supabase, userId, settings.timezone);
   const system = await loadPrompt("weekly-coach", { context });
 
+  const weekEnd = addDays(weekStart, 6);
   const userContent = [
     `# Week of ${weekStart}`,
+    ...(today < weekEnd
+      ? [
+          "",
+          `Note: this review is being run on ${today}, before the week ends on ${weekEnd}. ` +
+            "The numbers cover a partial week — read them as such and do not count unfinished days as failures.",
+        ]
+      : []),
     "",
     "## This week's scorecard",
     "```json",

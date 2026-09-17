@@ -275,13 +275,27 @@ export async function saveTop3(
   revalidatePath(`/review/${week}/4`);
 }
 
-export async function generateCoach(weekStart: string): Promise<void> {
+/**
+ * Returns failure as data instead of throwing: production masks thrown
+ * server-action messages, and the Coach button must never die silently.
+ */
+export async function generateCoach(
+  weekStart: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
   const { supabase, userId } = await session();
   const week = weekSchema.parse(weekStart);
   await getReview(supabase, userId, week);
-  await runWeeklyCoach(supabase, userId, week);
+  try {
+    await runWeeklyCoach(supabase, userId, week);
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "The coach call failed.",
+    };
+  }
   await advance(supabase, userId, week, 5);
   revalidatePath(`/review/${week}/5`);
+  return { ok: true };
 }
 
 export async function setOneChangeAccepted(weekStart: string, accepted: boolean): Promise<void> {

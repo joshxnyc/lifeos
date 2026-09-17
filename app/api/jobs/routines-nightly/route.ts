@@ -3,10 +3,17 @@ import { getSettings } from "@/lib/settings";
 import { addDays, localDate, localTime } from "@/lib/time";
 import type { Routine } from "@/lib/types";
 
+// Log tables grow without bound otherwise: the minutely crons alone write
+// ~2,880 job_runs a day. Old rows carry no decisions, so they go; ai_calls
+// keeps 6 months so the Settings spend view stays meaningful.
+const JOB_RUNS_KEEP_DAYS = 30;
+const AI_CALLS_KEEP_DAYS = 180;
+
 /**
  * Closes off yesterday (SPEC §4.2): every active routine that was scheduled
  * and never logged gets an explicit `missed` row, so streaks and adherence are
- * computed from data rather than from absence.
+ * computed from data rather than from absence. Also prunes the job_runs and
+ * ai_calls logs.
  *
  * pg_cron runs this every 15 minutes in UTC; it only acts in the first half
  * hour of the local day, and is idempotent if it runs twice in that window.
@@ -44,10 +51,28 @@ export const POST = jobRoute("routines-nightly", async ({ supabase, userId, now 
     if (error) throw new Error(`routines-nightly: ${error.message}`);
   }
 
+  const cutoff = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+  const [jobRunsGone, aiCallsGone] = await Promise.all([
+    supabase
+      .from("job_runs")
+      .delete({ count: "exact" })
+      .eq("user_id", userId)
+      .lt("started_at", cutoff(JOB_RUNS_KEEP_DAYS)),
+    supabase
+      .from("ai_calls")
+      .delete({ count: "exact" })
+      .eq("user_id", userId)
+      .lt("created_at", cutoff(AI_CALLS_KEEP_DAYS)),
+  ]);
+  if (jobRunsGone.error) throw new Error(`job_runs retention: ${jobRunsGone.error.message}`);
+  if (aiCallsGone.error) throw new Error(`ai_calls retention: ${aiCallsGone.error.message}`);
+
   return {
     date: yesterday,
     scheduled: scheduledYesterday.length,
     already_logged: scheduledYesterday.length - missing.length,
     missed_written: missing.length,
+    job_runs_deleted: jobRunsGone.count ?? 0,
+    ai_calls_deleted: aiCallsGone.count ?? 0,
   };
 });
