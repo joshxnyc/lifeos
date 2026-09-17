@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 // Catch-all for the review tree, so a failed action or query shows a message
@@ -23,9 +24,9 @@ export default function ReviewError({
         <Button variant="primary" onClick={reset}>
           Try again
         </Button>
-        <a href="/review" className="min-h-11 text-[15px] text-accent">
+        <Link href="/review" className="flex min-h-11 items-center text-[15px] text-accent">
           Back to reviews
-        </a>
+        </Link>
       </div>
     </div>
   );
