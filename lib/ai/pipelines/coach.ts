@@ -237,6 +237,45 @@ export async function runWeeklyCoach(
       : Promise.resolve({ data: [] as { id: string; title: string }[] }),
   ]);
 
+  // Under a week of data there is no pattern to read, and an LLM asked for one
+  // anyway will invent it. Say so plainly, with the numbers, and skip the call.
+  const history = (prevReviews ?? []) as {
+    week_start: string;
+    scorecard: Scorecard;
+    one_change: string | null;
+    one_change_accepted: boolean | null;
+  }[];
+  const today = localDate(new Date(), settings.timezone);
+  if (history.length === 0) {
+    const { data: firstDomain } = await supabase
+      .from("domains")
+      .select("created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const firstDay = firstDomain?.created_at
+      ? localDate(new Date(firstDomain.created_at), settings.timezone)
+      : today;
+    const daysOfData = Math.max(1, diffDays(firstDay, today) + 1);
+    if (daysOfData < 7) {
+      const t = scorecard.total;
+      const read = [
+        `${daysOfData} ${daysOfData === 1 ? "day" : "days"} of data. Not enough for a read.`,
+        "",
+        `So far: ${t.completed} completed, ${t.created} created, ${t.open} open, ` +
+          `${t.overdue_at_week_end} overdue. A pattern takes at least one full week of numbers ` +
+          `and this is ${daysOfData === 1 ? "one day" : `${daysOfData} days`}. ` +
+          `Keep capturing, log the routines, and the first real read comes with a full week behind it.`,
+      ].join("\n");
+      await supabase
+        .from("weekly_reviews")
+        .update({ coach_text: read, coach_model: null, one_change: null, scorecard })
+        .eq("id", review.id);
+      return { read, one_change: "", pattern_flags: ["insufficient_history"] };
+    }
+  }
+
   const { data: routines } = await supabase
     .from("routines")
     .select("id, name")

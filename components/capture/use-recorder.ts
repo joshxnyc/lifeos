@@ -9,7 +9,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Safari records audio/mp4, Chrome audio/webm — try in preference order. */
 const MIME_CANDIDATES = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
 
-export function useRecorder() {
+/** Hard ceiling: transcription cost and iOS background limits both bite past
+ * this. At the limit the hook fires `onAutoStop` — it never stops the recorder
+ * itself, so the owning UI runs its normal stop-and-file path and the audio is
+ * kept, exactly as if the stop button had been tapped. */
+export const RECORDING_LIMIT_MS = 5 * 60_000;
+/** The UIs show a "Stops in 0:42" countdown from here on. */
+export const RECORDING_COUNTDOWN_FROM_MS = 4 * 60_000;
+
+export function useRecorder(opts?: { onAutoStop?: () => void }) {
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
