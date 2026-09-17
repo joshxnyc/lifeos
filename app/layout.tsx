@@ -33,7 +33,8 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale: capping it at 1 disables pinch-zoom on iOS, which is an
+  // accessibility failure, not a PWA nicety.
   viewportFit: "cover",
 };
 
