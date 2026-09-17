@@ -13,11 +13,25 @@ function configure() {
   configured = true;
 }
 
+/** A notification action button, forwarded verbatim to SW showNotification. */
+export interface PushAction {
+  action: string;
+  title: string;
+}
+
 export interface PushMessage {
   title: string;
   body: string;
   url: string;
   tag?: string;
+  /**
+   * Action buttons ("Done", "Snooze 1h"). The service worker passes these to
+   * showNotification; platforms without action support ignore them and a tap
+   * on the body still opens `url`. Pushover has no actions and drops them.
+   */
+  actions?: PushAction[];
+  /** Rides into notification.data so an action tap knows which task to act on. */
+  task_id?: string;
 }
 
 /**

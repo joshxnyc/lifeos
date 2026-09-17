@@ -14,6 +14,16 @@ export interface TaskDeadline {
 
 export const REMINDER_LEAD_MINUTES = 30;
 export const DAY_TASK_REMINDER_TIME = "10:00";
+export const SNOOZE_MINUTES = 60;
+
+/**
+ * payload.routine_id for a snoozed task_due row. schedule-day keys its rows on
+ * `task_due:<id>` alone, so the `:snooze:<hour>` suffix keeps a snooze out of
+ * the unique dedupe index's way — snoozing must always enqueue a fresh row.
+ */
+export function snoozeRoutineId(taskId: string, fireAt: Date): string {
+  return `task_due:${taskId}:snooze:${fireAt.getUTCHours()}`;
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;

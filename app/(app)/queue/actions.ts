@@ -305,20 +305,25 @@ export async function setDismissalReason(id: string, reason: DismissedReason): P
  * this kind, then return the suggestion to pending so the card reappears.
  * The reversal only touches rows that still look exactly as accept left them
  * — anything already changed by hand stays, and the undo refuses instead of
- * clobbering it.
+ * clobbering it. Refusals come back as `{ ok: false }` values so the toast can
+ * show the real sentence (a thrown message is masked in production).
  */
-export async function undoAcceptSuggestion(id: string): Promise<void> {
-  const { supabase } = await session();
-  if (!z.string().uuid().safeParse(id).success) throw new Error("Unknown suggestion.");
+export async function undoAcceptSuggestion(id: string): Promise<ActionResult> {
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Unknown suggestion." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
 
   const { data: row, error } = await supabase
     .from("suggestions")
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (error || !row) throw new Error("Suggestion not found.");
+  if (error || !row) return { ok: false, error: "Suggestion not found." };
   const suggestion = row as Suggestion;
-  if (suggestion.status !== "accepted") return; // already undone or never accepted
+  if (suggestion.status !== "accepted") return { ok: true }; // already undone or never accepted
 
   const stored = (suggestion.proposed ?? {}) as StoredProposed;
   const { _undo: undo, ...proposed } = stored;
@@ -334,10 +339,10 @@ export async function undoAcceptSuggestion(id: string): Promise<void> {
         .maybeSingle();
       if (task) {
         if (task.status !== "open" || task.origin !== "suggestion" || task.origin_id !== suggestion.id) {
-          throw new Error("That task was already changed, so this stays accepted.");
+          return { ok: false, error: "That task was already changed, so this stays accepted." };
         }
         const { error: deleteError } = await supabase.from("tasks").delete().eq("id", task.id);
-        if (deleteError) throw new Error(`undo: ${deleteError.message}`);
+        if (deleteError) return { ok: false, error: `undo: ${deleteError.message}` };
         await bumpProject(supabase, task.project_id as string | null);
       }
     }
@@ -351,13 +356,13 @@ export async function undoAcceptSuggestion(id: string): Promise<void> {
         .maybeSingle();
       if (task && !task.is_mirror) {
         if ((task.due_date ?? null) !== (proposed.due_date ?? null)) {
-          throw new Error("That deadline changed again, so this stays accepted.");
+          return { ok: false, error: "That deadline changed again, so this stays accepted." };
         }
         const { error: revertError } = await supabase
           .from("tasks")
           .update({ due_date: undo.prev_due_date ?? null })
           .eq("id", task.id);
-        if (revertError) throw new Error(`undo: ${revertError.message}`);
+        if (revertError) return { ok: false, error: `undo: ${revertError.message}` };
       }
     }
   } else if (suggestion.kind === "person_fact") {
@@ -413,10 +418,11 @@ export async function undoAcceptSuggestion(id: string): Promise<void> {
     .update({ status: "pending", resolved_at: null, resulting_task_id: null, proposed })
     .eq("id", suggestion.id)
     .eq("status", "accepted");
-  if (reopenError) throw new Error(`undo: ${reopenError.message}`);
+  if (reopenError) return { ok: false, error: `undo: ${reopenError.message}` };
 
   revalidatePath("/queue");
   revalidatePath("/today");
+  return { ok: true };
 }
 
 /**
