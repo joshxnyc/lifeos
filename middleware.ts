@@ -76,6 +76,9 @@ export async function middleware(request: NextRequest) {
     pathname === "/login" ||
     pathname.startsWith("/api/jobs") ||
     pathname.startsWith("/api/auth") ||
+    // The VAPID public key is public by definition; the service worker may
+    // need it during pushsubscriptionchange when cookies are absent.
+    pathname === "/api/push/vapid-key" ||
     pathname === "/manifest.webmanifest";
 
   if (!user && !isPublic) {
