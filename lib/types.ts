@@ -59,6 +59,8 @@ export interface Task extends Base {
   priority: 0 | 1 | 2 | 3;
   due_date: string | null;
   due_time: string | null;
+  /** Estimated active time in whole minutes (1–1440), from capture filing. */
+  duration_minutes: number | null;
   scheduled_date: string | null;
   completed_at: string | null;
   dropped_reason: string | null;
