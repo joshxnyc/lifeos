@@ -5,6 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { addDays, localDate, localDayOfWeek, localTime, mondayOf } from "@/lib/time";
 import { computeStreaks } from "@/lib/domain/streaks";
 import { formatLongDate } from "@/components/tasks/format";
+import { timeAgo } from "@/components/queue/relative-time";
 import { TaskList } from "@/components/tasks/task-list";
 import { TopItemCard } from "@/components/today/top-item-card";
 import { ScheduleStrip, type ScheduleEvent } from "@/components/today/schedule-strip";
@@ -28,6 +29,9 @@ import type {
 import type { TaskView } from "@/components/tasks/types";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** 2 hours: 3-4x the slowest sync cadence, so a healthy account never trips it. */
+const STALE_SYNC_MS = 2 * 3_600_000;
 
 export default async function TodayPage({
   searchParams,
@@ -142,9 +146,30 @@ export default async function TodayPage({
   ].filter((t) => !t.is_mirror);
 
   const accounts = (accountRows ?? []) as Array<
-    Pick<ConnectedAccount, "id" | "provider" | "status" | "writable_calendar_id" | "default_domain_id">
+    Pick<
+      ConnectedAccount,
+      | "id"
+      | "provider"
+      | "label"
+      | "status"
+      | "writable_calendar_id"
+      | "default_domain_id"
+      | "last_synced_at"
+      | "last_error"
+      | "created_at"
+    >
   >;
   const needsReauth = accounts.filter((a) => a.status === "needs_reauth");
+  // An account can look connected and still be dead: last sweep errored, or no
+  // sweep has landed in far longer than its cadence (google 15 min, notion and
+  // granola 30 min — one flat "stale after 2 hours" rule covers them all).
+  // Never-synced accounts count from when they were connected.
+  const staleAccounts = accounts.filter(
+    (a) =>
+      a.status === "active" &&
+      (Boolean(a.last_error) ||
+        now.getTime() - new Date(a.last_synced_at ?? a.created_at).getTime() > STALE_SYNC_MS),
+  );
   // Any active Google account with a designated writable calendar can hold the
   // block: calendar-write prefers the one whose default domain matches the
   // task and falls back to the first, so the button must not require a match.
@@ -218,7 +243,7 @@ export default async function TodayPage({
           {reviewDone ? (
             <p className="mt-1 text-[13px] text-ink-2">Review done · next {reviewNext}</p>
           ) : null}
-          {queueCount || needsReauth.length > 0 ? (
+          {queueCount || needsReauth.length > 0 || staleAccounts.length > 0 ? (
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               {queueCount ? (
                 <Link
@@ -242,6 +267,20 @@ export default async function TodayPage({
                     : `${needsReauth.length} accounts need reconnecting`}
                 </Link>
               ) : null}
+              {staleAccounts.map((a) => (
+                // Same visual language as the reauth pill: something to fix in
+                // Settings, not an alarm.
+                <Link
+                  key={a.id}
+                  href="/settings"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line px-2.5 text-[13px] text-ink-2"
+                >
+                  <span className="size-1.5 rounded-full bg-warn" aria-hidden />
+                  {a.last_synced_at
+                    ? `${a.label} hasn't synced since ${timeAgo(a.last_synced_at, now).replace(/ ago$/, "")}`
+                    : `${a.label} hasn't synced yet`}
+                </Link>
+              ))}
             </div>
           ) : null}
         </header>

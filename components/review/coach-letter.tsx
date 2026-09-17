@@ -38,6 +38,13 @@ export function CoachLetter({
     });
   }
 
+  function writeRead() {
+    run(async () => {
+      const result = await generateCoach(weekStart);
+      if (!result.ok) throw new Error(result.message);
+    });
+  }
+
   if (!read) {
     return (
       <div className="py-10">
@@ -45,7 +52,7 @@ export function CoachLetter({
           The read uses this week&apos;s numbers and the last four weeks.
         </p>
         <div className="mt-5">
-          <Button variant="primary" disabled={pending} onClick={() => run(() => generateCoach(weekStart))}>
+          <Button variant="primary" disabled={pending} onClick={writeRead}>
             {pending ? "Writing" : "Write the read"}
           </Button>
         </div>
@@ -106,7 +113,7 @@ export function CoachLetter({
           Finish
         </Button>
         <button
-          onClick={() => run(() => generateCoach(weekStart))}
+          onClick={writeRead}
           disabled={pending}
           className="min-h-11 text-[14px] text-ink-2 underline-offset-2 hover:text-ink hover:underline"
         >

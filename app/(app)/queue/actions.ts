@@ -171,7 +171,7 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
     // key, leaving the card "accepted" on screen and pending in the database.
     const { data: target } = await supabase
       .from("tasks")
-      .select("id, is_mirror")
+      .select("id, is_mirror, due_date")
       .eq("id", proposed.existing_task_id)
       .maybeSingle();
     if (!target) throw new Error("That task no longer exists. Dismiss this one.");
@@ -183,8 +183,10 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
       .eq("id", proposed.existing_task_id);
     if (updateError) throw new Error(`accept: ${updateError.message}`);
     resultingTaskId = proposed.existing_task_id;
+    undo = { prev_due_date: (target.due_date as string | null) ?? null };
   } else if (suggestion.kind === "person_fact") {
     let personId = proposed.person_id ?? null;
+    let createdPerson = false;
     if (!personId && proposed.new_person?.name) {
       const { data: person, error: personError } = await supabase
         .from("people")
@@ -199,6 +201,7 @@ export async function acceptSuggestion(id: string, edited?: Partial<SuggestionPr
         .single();
       if (personError) throw new Error(`accept: ${personError.message}`);
       personId = person.id;
+      createdPerson = true;
     }
     if (!personId) throw new Error("This fact needs a person. Pick one before accepting.");
 

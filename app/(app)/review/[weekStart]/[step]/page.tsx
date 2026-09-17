@@ -70,24 +70,7 @@ export default async function ReviewStepPage({
 
       <StepIndicator weekStart={weekStart} step={step} reached={Math.max(review.step_reached, step)} />
 
-      {step === 1 ? (
-        <section>
-          <h1 className="sr-only">Scorecard</h1>
-          <ScorecardView
-            scorecard={
-              review.status === "done" && review.scorecard
-                ? review.scorecard
-                : await buildScorecard(supabase, userId, weekStart)
-            }
-            domains={domains}
-          />
-          <form action={commitScorecard.bind(null, weekStart)} className="mt-8">
-            <Button type="submit" variant="primary">
-              Continue
-            </Button>
-          </form>
-        </section>
-      ) : null}
+      {step === 1 ? await renderScorecard() : null}
 
       {step === 2 ? await renderSlipped() : null}
       {step === 3 ? await renderDormant() : null}
