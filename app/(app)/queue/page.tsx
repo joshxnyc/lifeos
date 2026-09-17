@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SuggestionCard } from "@/components/queue/suggestion-card";
+import { ReasonStripHost } from "@/components/queue/reason-strip";
 import { timeAgo } from "@/components/queue/relative-time";
 import { createClient } from "@/lib/supabase/server";
 import type { Domain, Project, Suggestion, SuggestionProposed } from "@/lib/types";
@@ -54,9 +55,13 @@ export default async function QueuePage() {
 
   const sweep = lastRun?.finished_at ?? lastRun?.started_at ?? null;
 
+  // The reason strip host sits at the same tree position in both branches so
+  // React keeps it mounted when a dismissed last card refreshes into the
+  // empty state — exactly the moment its strip is still on screen.
   if (!rows.length) {
     return (
       <>
+        <ReasonStripHost />
         <PageHeader title="Queue" />
         <EmptyState
           line={`Nothing waiting. Last sweep ${timeAgo(sweep)}.`}
@@ -85,6 +90,7 @@ export default async function QueuePage() {
 
   return (
     <>
+      <ReasonStripHost />
       <PageHeader
         title="Queue"
         actions={

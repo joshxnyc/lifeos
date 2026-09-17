@@ -11,6 +11,7 @@ import {
   undoDismissSuggestion,
 } from "@/app/(app)/queue/actions";
 import { toast } from "@/components/tasks/toast";
+import { hideReasonStrip, showReasonStrip } from "@/components/queue/reason-strip";
 import type { DomainSlug, SuggestionKind, SuggestionProposed } from "@/lib/types";
 
 // DESIGN_BRIEF §5.3 — kind label, title, editable proposed chips, an inset
@@ -65,15 +66,22 @@ export function SuggestionCard(props: SuggestionCardProps) {
   function runUndo(action: "accept" | "dismiss") {
     const revert = action === "accept" ? undoAcceptSuggestion : undoDismissSuggestion;
     void revert(props.id)
-      .then(() => {
+      .then((result) => {
+        if (!result.ok) {
+          toast(result.error);
+          return;
+        }
+        // An undone dismissal takes its reason strip with it — the row is
+        // pending again and a reason would no longer apply.
+        if (action === "dismiss") hideReasonStrip(props.id);
         // If this card is still mounted, put it straight back; either way the
         // refresh brings the pending suggestion back into the queue.
         setResolved(null);
         setDx(0);
         router.refresh();
       })
-      .catch((err) => {
-        toast(err instanceof Error ? err.message : "That undo didn't work.");
+      .catch(() => {
+        toast("That undo didn't work.");
       });
   }
 
@@ -88,6 +96,9 @@ export function SuggestionCard(props: SuggestionCardProps) {
           label: "Undo",
           onPress: () => runUndo(action),
         });
+        // A dismiss also raises the reason strip (hosted by the queue page,
+        // so it outlives this card): one optional tap that records why.
+        if (action === "dismiss") showReasonStrip(props.id);
         router.refresh();
       } catch (err) {
         setDx(0);

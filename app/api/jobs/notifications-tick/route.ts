@@ -10,6 +10,12 @@ import type { NotificationRow } from "@/lib/types";
 
 const BATCH = 25;
 
+// The action ids are the SW's contract (app/sw.ts notificationclick → /api/push/act).
+const TASK_DUE_ACTIONS = [
+  { action: "complete", title: "Done" },
+  { action: "snooze", title: "Snooze 1h" },
+];
+
 /**
  * The only sender (CONTRACTS, SPEC §8). Every minute: take the due `scheduled`
  * rows, drop the ones that have been overtaken by events, respect quiet hours,
@@ -118,8 +124,13 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
     // still carry the deadline this row was enqueued for (reschedules re-enter
     // via schedule-day), and the deadline itself must still be ahead — a row
     // held through quiet hours must not buzz about last night's deadline.
+    let dueTaskId: string | null = null;
     if (n.kind === "task_due") {
       const taskId = typeof n.payload?.task_id === "string" ? (n.payload.task_id as string) : null;
+      // A snoozed row is a reminder the user asked for at that exact time, so
+      // it fires even when the deadline has meanwhile passed — the task itself
+      // is still validated like any other row.
+      const snoozed = n.payload?.snoozed === true;
       let stillDue = false;
       if (taskId) {
         const { data: task } = await supabase
@@ -135,7 +146,8 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
           task.due_date === (n.payload?.due_date ?? null) &&
           normalizeDueTime(task.due_time) === (n.payload?.due_time ?? null) &&
           task.due_date &&
-          taskReminderAt({ due_date: task.due_date, due_time: task.due_time }, tz, now) !== null
+          (snoozed ||
+            taskReminderAt({ due_date: task.due_date, due_time: task.due_time }, tz, now) !== null)
         ) {
           stillDue = true;
         }
@@ -145,6 +157,7 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
         cancelled += 1;
         continue;
       }
+      dueTaskId = taskId;
     }
 
     // The 3h repeat exists only until the review is actually under way.
@@ -175,6 +188,9 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
           body: n.body,
           url: n.url,
           tag: routineId ? `${n.kind}-${routineId}` : n.kind,
+          // Only deadline pushes get action buttons: Done and Snooze 1h, both
+          // handled by the SW against /api/push/act. Other kinds stay tap-only.
+          ...(dueTaskId ? { task_id: dueTaskId, actions: TASK_DUE_ACTIONS } : {}),
         },
         { pushoverEnabled: settings.pushover_enabled },
       );
