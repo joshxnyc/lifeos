@@ -4,9 +4,10 @@ import { fromZonedTime } from "date-fns-tz";
 import { MODEL_MAIN, callStructured, loadPrompt } from "@/lib/ai/client";
 import { buildContext } from "@/lib/ai/context";
 import { getSettings } from "@/lib/settings";
-import { addDays } from "@/lib/time";
+import { addDays, localDate } from "@/lib/time";
 import { isFollowUpOverdue } from "@/lib/people";
-import { computeScorecard } from "@/lib/domain/scorecard";
+import { assembleScorecardInput, computeScorecard } from "@/lib/domain/scorecard";
+import { diffDays } from "@/lib/domain/dates";
 import type {
   Capture,
   CalendarEvent,
@@ -166,7 +167,10 @@ export async function buildScorecard(
   weekStart: string,
 ): Promise<Scorecard> {
   const input = await gatherScorecardInput(supabase, userId, weekStart);
-  return computeScorecard(input as unknown as Parameters<typeof computeScorecard>[0]);
+  // ScorecardInputRaw structurally satisfies ScorecardRawRows, so the compiler
+  // checks the bridge — the old `as unknown as` cast here shipped a shape
+  // computeScorecard could not read and crashed every review at step 1.
+  return computeScorecard(assembleScorecardInput(input));
 }
 
 // ---------------------------------------------------------------------------

@@ -319,9 +319,8 @@ async function createRows(
     if (item.type === "task" || item.type === "reminder") {
       const title = item.title?.trim();
       if (!title) continue;
-      // There is no duration column yet, so the estimate rides along in the
-      // body and in captures.result — enough for the calendar block length to
-      // read it once Google write lands.
+      // The estimate lands in the column (calendar-write reads it for the
+      // block length) and stays in the body so it is visible on the task.
       const durationMinutes = normalizeDuration(item.duration_minutes);
       const { data: task } = await supabase
         .from("tasks")
@@ -332,6 +331,7 @@ async function createRows(
           person_id: personId,
           title,
           body_md: withEstimate(item.body_md, durationMinutes),
+          duration_minutes: durationMinutes,
           due_date: item.due_date || null,
           due_time: item.due_time || null,
           priority: clampPriority(item.priority),

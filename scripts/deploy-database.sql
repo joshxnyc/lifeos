@@ -646,3 +646,12 @@ update public.connected_accounts
 set sync_state = sync_state - 'calendar_sync_tokens'
 where provider = 'google'
   and sync_state ? 'calendar_sync_tokens';
+
+-- ---------------------------------------------------------------------------
+-- 2026-09-17: tasks.duration_minutes — the capture pipeline's time estimate,
+-- used as the calendar block length. Standalone block, safe to run twice
+-- (`if not exists` skips the re-add, so the CHECK is only created once).
+-- Mirrors supabase/migrations/20260917000007_task_duration.sql.
+-- ---------------------------------------------------------------------------
+alter table public.tasks add column if not exists duration_minutes integer
+  check (duration_minutes between 1 and 1440);
