@@ -105,6 +105,23 @@ export async function countQueued(): Promise<number> {
 }
 
 /**
+ * One flusher at a time per tab. Both the shell (app-lifecycle) and the
+ * capture screen replay this queue; navigating to /capture while a shell
+ * flush is mid-flight would otherwise list the same items again and send
+ * them twice. Returns null when another flush already holds the lock.
+ */
+let flushing = false;
+export async function withFlushLock<T>(run: () => Promise<T>): Promise<T | null> {
+  if (flushing) return null;
+  flushing = true;
+  try {
+    return await run();
+  } finally {
+    flushing = false;
+  }
+}
+
+/**
  * True when a failure looks like "there is no network" rather than "the server
  * said no": an offline browser, a fetch TypeError, or the message Supabase and
  * the browsers use when the request never left.

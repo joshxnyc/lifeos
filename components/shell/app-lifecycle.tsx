@@ -10,13 +10,22 @@
 // 2. Refresh on resume. iOS keeps a standalone PWA's DOM alive for days;
 //    without this, opening the app in the morning shows yesterday's Today
 //    until a navigation happens.
+// 3. Host the toast outlet. It must be in the initial bundle — the command
+//    palette is code-split and loads after hydration, so a toast fired
+//    before that chunk arrives (e.g. this file's own flush notes) would
+//    otherwise dispatch to nobody and be lost.
 
 import { useCallback, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "@/components/tasks/toast";
+import { ToastHost, toast } from "@/components/tasks/toast";
 import { postCapture, uploadAudio } from "@/components/capture/send";
-import { isNetworkError, listQueued, removeQueued } from "@/components/capture/offline-queue";
+import {
+  isNetworkError,
+  listQueued,
+  removeQueued,
+  withFlushLock,
+} from "@/components/capture/offline-queue";
 
 const STALE_AFTER_MS = 60_000;
 
@@ -24,14 +33,13 @@ export function AppLifecycle() {
   const router = useRouter();
   const pathname = usePathname();
   const hiddenAtRef = useRef<number | null>(null);
-  const flushingRef = useRef(false);
   const onCaptureScreen = pathname === "/capture" || pathname.startsWith("/capture/");
 
   const flush = useCallback(async () => {
-    if (flushingRef.current) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-    flushingRef.current = true;
-    try {
+    // withFlushLock also excludes the capture screen's flusher, so navigating
+    // to /capture mid-flight cannot send the same queued item twice.
+    await withFlushLock(async () => {
       const items = await listQueued();
       if (!items.length) return;
       const supabase = createClient();
@@ -57,9 +65,7 @@ export function AppLifecycle() {
         toast(`${sent} offline ${sent === 1 ? "capture" : "captures"} sent.`);
         router.refresh();
       }
-    } finally {
-      flushingRef.current = false;
-    }
+    });
   }, [router]);
 
   useEffect(() => {
@@ -89,5 +95,5 @@ export function AppLifecycle() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [router, flush, onCaptureScreen]);
 
-  return null;
+  return <ToastHost />;
 }

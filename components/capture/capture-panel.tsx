@@ -16,6 +16,7 @@ import {
   listQueued,
   queueCapture,
   removeQueued,
+  withFlushLock,
 } from "@/components/capture/offline-queue";
 import type { CaptureResult, Domain, DomainSlug, Project } from "@/lib/types";
 
@@ -162,33 +163,37 @@ export function CapturePanel({ domains, projects }: { domains: Domain[]; project
    */
   const flushQueue = useCallback(async () => {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-    const items = await listQueued();
-    if (!items.length) return;
+    // withFlushLock also excludes the shell flusher (app-lifecycle): arriving
+    // here while it is mid-flight must not send the same queued items twice.
+    await withFlushLock(async () => {
+      const items = await listQueued();
+      if (!items.length) return;
 
-    let sent = 0;
-    let rejected: string | null = null;
-    for (const item of items) {
-      try {
-        if (item.audio) {
-          const path = await uploadAudio(supabase, item.audio);
-          await postCapture({ audioPath: path, source: item.source });
-        } else if (item.text) {
-          await postCapture({ text: item.text, source: item.source });
-        } else {
+      let sent = 0;
+      let rejected: string | null = null;
+      for (const item of items) {
+        try {
+          if (item.audio) {
+            const path = await uploadAudio(supabase, item.audio);
+            await postCapture({ audioPath: path, source: item.source });
+          } else if (item.text) {
+            await postCapture({ text: item.text, source: item.source });
+          } else {
+            await removeQueued(item.id);
+            continue;
+          }
           await removeQueued(item.id);
-          continue;
+          sent += 1;
+        } catch (err) {
+          if (isNetworkError(err)) break; // still offline: leave the rest queued
+          rejected = err instanceof Error ? err.message : "Capture failed to save.";
+          await removeQueued(item.id);
         }
-        await removeQueued(item.id);
-        sent += 1;
-      } catch (err) {
-        if (isNetworkError(err)) break; // still offline: leave the rest queued
-        rejected = err instanceof Error ? err.message : "Capture failed to save.";
-        await removeQueued(item.id);
       }
-    }
 
-    if (sent) setOfflineNote(`${sent} offline ${sent === 1 ? "capture" : "captures"} sent.`);
-    if (rejected) setProblem(`An offline capture could not be filed: ${rejected}`);
+      if (sent) setOfflineNote(`${sent} offline ${sent === 1 ? "capture" : "captures"} sent.`);
+      if (rejected) setProblem(`An offline capture could not be filed: ${rejected}`);
+    });
   }, [supabase]);
 
   useEffect(() => {

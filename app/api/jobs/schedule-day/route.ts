@@ -91,13 +91,15 @@ export const POST = jobRoute("schedule-day", async ({ supabase, userId, now }) =
  * owner-'me', non-mirror tasks — mirrored Tarifa tasks live in Notion and are
  * not the app's to nag about.
  *
- * Dedupe is two layers. dedupeDaily on payload.routine_id = "task_due:<id>"
- * means at most one push per task per local day even when a late reminder is
- * clamped to `now` (a fresh timestamp every run). The `covered` set below
- * closes the remaining gap — a deadline just after midnight whose reminder
- * fired the evening before lands on a new local day, so daily dedupe alone
- * would let a second row through; one reminder per (task, deadline) is the
- * rule, so any existing task_due row for the same due stamp skips the task.
+ * Dedupe is the `covered` set below: one reminder per (task, deadline), so
+ * any existing task_due row for the same due stamp — whatever its status —
+ * skips the task. That also covers the clamped case, where a late reminder is
+ * scheduled at `now` (a fresh timestamp every run). Deliberately NOT
+ * enqueueNotification's dedupeDaily: that keys on the task alone per local
+ * day, so a task retimed within the same day (14:00 → 18:00) would be blocked
+ * by its old row — which notifications-tick then cancels as stale — and end
+ * up with no reminder at all. Keyed on the due stamp, a reschedule enqueues a
+ * fresh row and the tick cancels the outdated one at send time.
  */
 async function enqueueTaskReminders(
   supabase: SupabaseClient,
@@ -126,12 +128,16 @@ async function enqueueTaskReminders(
   // Every reminder for a deadline in the window was scheduled at most three
   // local days ago (day-before at 10:00 for a day task due +2); anything older
   // is for a deadline that has passed and computes to null anyway.
-  const { data: existingRows } = await supabase
+  const { data: existingRows, error: existingError } = await supabase
     .from("notifications")
     .select("payload")
     .eq("user_id", userId)
     .eq("kind", "task_due")
     .gte("scheduled_for", fromZonedTime(`${addDays(today, -3)}T00:00:00`, tz).toISOString());
+  // covered is the only thing standing between a clamped reminder and a
+  // duplicate push; if it can't be read, enqueue nothing and let the next
+  // run (15 minutes away) try again.
+  if (existingError) return 0;
   const covered = new Set(
     (existingRows ?? []).map((r: { payload: Record<string, unknown> }) =>
       [r.payload?.task_id, r.payload?.due_date, r.payload?.due_time ?? ""].join("|"),
@@ -155,12 +161,11 @@ async function enqueueTaskReminders(
       url: `/tasks?task=${task.id}`,
       scheduledFor: reminderAt,
       payload: {
-        routine_id: `task_due:${task.id}`, // keys the dedupe index
+        routine_id: `task_due:${task.id}`, // keys the unique dedupe index
         task_id: task.id,
         due_date: task.due_date,
         due_time: dueTime,
       },
-      dedupeDaily: true,
     });
     if (created) enqueued += 1;
   }

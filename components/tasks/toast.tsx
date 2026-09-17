@@ -1,7 +1,8 @@
 "use client";
 
-// A single quiet toast line. `ToastHost` is mounted once by the command
-// palette (which lives in the app shell), so any client component can call
+// A single quiet toast line. `ToastHost` is mounted once by AppLifecycle in
+// the app shell (eagerly — never inside a code-split component, or toasts
+// fired before that chunk loads are lost), so any client component can call
 // `toast()` without extra wiring.
 import { useEffect, useState } from "react";
 

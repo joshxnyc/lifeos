@@ -2,8 +2,9 @@
 
 // ⌘K command palette: navigation, search hand-off and real quick-add (SPEC §9).
 // ⌘J jumps to capture. Parsing is lib/domain/quick-add; writing is the tasks
-// server action. It also hosts the app's single toast outlet, because the
-// palette is mounted once in the app shell.
+// server action. The toast outlet lives in AppLifecycle, not here: this file
+// is code-split and loads after hydration, so a toast fired early (an offline
+// replay on mount) would find no listener.
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -11,7 +12,7 @@ import { Command } from "cmdk";
 import { createClient } from "@/lib/supabase/client";
 import { createTask } from "@/app/(app)/tasks/actions";
 import { ParsedChips, parseSafely } from "@/components/tasks/quick-add";
-import { ToastHost, toast } from "@/components/tasks/toast";
+import { toast } from "@/components/tasks/toast";
 import { useSmartAdd } from "@/components/capture/use-smart-add";
 import { requestRecord } from "@/components/capture/global-record";
 import type { Domain, Project } from "@/lib/types";
@@ -153,7 +154,6 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
 
   return (
     <>
-      <ToastHost />
       {open ? (
         <div
           className="animate-fade-in fixed inset-0 z-50 bg-ink/20 pt-[15vh]"
