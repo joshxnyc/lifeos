@@ -59,36 +59,57 @@ export function ScorecardView({
     <div>
       {/* Canvas 1m: the machine summary leads the screen in Fraunces 22. */}
       <p className="display-lead mt-6 leading-[1.3]">{machineSummary(scorecard)}</p>
+      {firstWeek ? (
+        <p className="mt-2 text-[13px] text-ink-2">
+          First week on record. Comparisons against the four-week average start once there is a
+          week behind this one.
+        </p>
+      ) : null}
 
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile label="Completed" value={scorecard.total.completed} delta={deltas.completed} />
+        <StatTile
+          label="Completed"
+          value={scorecard.total.completed}
+          delta={deltas.completed}
+          noHistory={firstWeek}
+        />
         <StatTile
           label="On time"
           value={onTime === null ? "—" : Math.round(onTime)}
           suffix={onTime === null ? undefined : "%"}
           delta={asPercent(deltas.on_time_rate)}
+          noHistory={firstWeek}
         />
         <StatTile
           label="Routine adherence"
           value={adherence === null ? "—" : Math.round(adherence)}
           suffix={adherence === null ? undefined : "%"}
           delta={asPercent(deltas.adherence)}
+          noHistory={firstWeek}
         />
         <StatTile
           label="Queue cleared"
           value={scorecard.queue.accepted + scorecard.queue.dismissed}
+          noHistory={firstWeek}
         />
-        <StatTile label="Still open" value={scorecard.total.open} goodDirection="down" />
+        <StatTile
+          label="Still open"
+          value={scorecard.total.open}
+          goodDirection="down"
+          noHistory={firstWeek}
+        />
         <StatTile
           label="Overdue at week end"
           value={scorecard.total.overdue_at_week_end}
           goodDirection="down"
+          noHistory={firstWeek}
         />
-        <StatTile label="Captures" value={scorecard.captures.count} />
+        <StatTile label="Captures" value={scorecard.captures.count} noHistory={firstWeek} />
         <StatTile
           label="Follow-ups overdue"
           value={scorecard.people_overdue_followup}
           goodDirection="down"
+          noHistory={firstWeek}
         />
       </div>
 

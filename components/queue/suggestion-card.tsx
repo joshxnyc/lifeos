@@ -4,7 +4,13 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { acceptSuggestion, dismissSuggestion } from "@/app/(app)/queue/actions";
+import {
+  acceptSuggestion,
+  dismissSuggestion,
+  undoAcceptSuggestion,
+  undoDismissSuggestion,
+} from "@/app/(app)/queue/actions";
+import { toast } from "@/components/tasks/toast";
 import type { DomainSlug, SuggestionKind, SuggestionProposed } from "@/lib/types";
 
 // DESIGN_BRIEF §5.3 — kind label, title, editable proposed chips, an inset
@@ -32,7 +38,7 @@ export interface SuggestionCardProps {
   people: { id: string; name: string }[];
 }
 
-const SWIPE_THRESHOLD = 96;
+const SWIPE_THRESHOLD = 112;
 
 export function SuggestionCard(props: SuggestionCardProps) {
   const router = useRouter();
@@ -41,7 +47,11 @@ export function SuggestionCard(props: SuggestionCardProps) {
   const [resolved, setResolved] = useState<null | "accepted" | "dismissed">(null);
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const startX = useRef(0);
+  // Axis lock (same pattern as TaskRow): nothing moves until the pointer has
+  // travelled 10px, and a gesture that starts more vertical than horizontal
+  // belongs to the scroll, never to the swipe.
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const axis = useRef<"none" | "x" | "y">("none");
   const [pending, startTransition] = useTransition();
 
   const proposed: SuggestionProposed = { ...props.proposed, ...edited };

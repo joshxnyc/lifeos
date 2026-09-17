@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  assembleScorecardInput,
   computeScorecard,
   summarizeScorecard,
   UNASSIGNED_DOMAIN_KEY,
   type ScorecardInput,
+  type ScorecardRawRows,
 } from "@/lib/domain/scorecard";
 
 // Week of Mon 2026-09-07 to Sun 2026-09-13, scored on the Sunday.

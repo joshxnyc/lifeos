@@ -302,7 +302,8 @@ export async function undoAcceptSuggestion(id: string): Promise<void> {
         if (task.status !== "open" || task.origin !== "suggestion" || task.origin_id !== suggestion.id) {
           throw new Error("That task was already changed, so this stays accepted.");
         }
-        await supabase.from("tasks").delete().eq("id", task.id);
+        const { error: deleteError } = await supabase.from("tasks").delete().eq("id", task.id);
+        if (deleteError) throw new Error(`undo: ${deleteError.message}`);
         await bumpProject(supabase, task.project_id as string | null);
       }
     }

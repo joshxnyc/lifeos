@@ -6,6 +6,7 @@ import { SearchField } from "@/components/search/search-field";
 import { RANGES, SearchFilters } from "@/components/search/search-filters";
 import { KIND_LABEL, ProviderGlyph } from "@/components/search/provider-glyph";
 import { Highlight, queryTerms, snippet } from "@/components/search/highlight";
+import { byBestMatch } from "./rank";
 import { DOMAIN_COLOR_CLASS } from "@/components/ui/domain";
 import { cn } from "@/lib/utils";
 import type { Domain, DomainSlug, Note, Person, SourceItem, Task } from "@/lib/types";
@@ -77,17 +78,43 @@ export default async function SearchPage({
     if (sinceIso) archiveQuery = archiveQuery.gte("occurred_at", sinceIso);
 
     const [t, n, p, a] = await Promise.all([taskQuery, noteQuery, peopleQuery, archiveQuery]);
-    tasks = (t.data ?? []) as Task[];
-    notes = (n.data ?? []) as Note[];
-    people = (p.data ?? []) as Person[];
-    archive = (a.data ?? []) as SourceItem[];
+    // Best match first within each group (see ./rank.ts); the queries above
+    // still pick the candidates, their .order() only decides which rows make
+    // the LIMIT cut.
+    tasks = byBestMatch((t.data ?? []) as Task[], terms, (task) => ({
+      title: task.title,
+      body: task.body_md,
+      recency: task.updated_at,
+    }));
+    notes = byBestMatch((n.data ?? []) as Note[], terms, (note) => ({
+      title: note.title,
+      body: note.body_md,
+      recency: note.updated_at,
+    }));
+    people = byBestMatch((p.data ?? []) as Person[], terms, (person) => ({
+      title: person.name,
+      body: [person.company, person.role, person.relationship, person.notes_md, ...person.emails]
+        .filter(Boolean)
+        .join(" "),
+      recency: person.last_contact_at ?? person.updated_at,
+    }));
+    archive = byBestMatch((a.data ?? []) as SourceItem[], terms, (item) => ({
+      title: item.title,
+      body: item.text,
+      recency: item.occurred_at ?? item.updated_at,
+    }));
   }
 
   const total = tasks.length + notes.length + people.length + archive.length;
 
   return (
     <div>
-      <PageHeader title="Search" subtitle={q ? `${total} ${total === 1 ? "result" : "results"}` : undefined} />
+      <PageHeader
+        title="Search"
+        subtitle={
+          q ? `${total} ${total === 1 ? "result" : "results"} · best match first` : undefined
+        }
+      />
       <SearchField initial={q} />
       <SearchFilters domains={domains} current={params} />
 

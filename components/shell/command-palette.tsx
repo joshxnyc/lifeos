@@ -85,6 +85,9 @@ const ITEM_CLASS =
   // Canvas 2j: rows are flush, selection shows as an accent left edge.
   "cursor-pointer border-l-[3px] border-l-transparent px-[15px] py-2 text-[14px] data-[selected=true]:border-l-accent data-[selected=true]:bg-paper-2";
 
+const GROUP_CLASS =
+  "[&_[cmdk-group-heading]]:section-label [&_[cmdk-group-heading]]:px-[18px] [&_[cmdk-group-heading]]:py-1.5";
+
 function localToday(timeZone: string): string {
   try {
     return new Intl.DateTimeFormat("en-CA", {
@@ -327,41 +330,92 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                     Record a capture
                   </Command.Item>
                 ) : null}
-                <Command.Group
-                  heading="Go to"
-                  className="[&_[cmdk-group-heading]]:section-label [&_[cmdk-group-heading]]:px-[18px] [&_[cmdk-group-heading]]:py-1.5"
-                >
-                  {NAV.map(([href, label]) => (
-                    <Command.Item
-                      key={href}
-                      value={label}
-                      onSelect={() => go(href)}
-                      className={ITEM_CLASS}
-                    >
-                      {label}
-                    </Command.Item>
-                  ))}
-                  {domains.map((d) => (
-                    <Command.Item
-                      key={d.id}
-                      value={`domain ${d.name}`}
-                      onSelect={() => go(`/domains/${d.slug}`)}
-                      className={ITEM_CLASS}
-                    >
-                      {d.name}
-                    </Command.Item>
-                  ))}
-                  {projects.map((p) => (
-                    <Command.Item
-                      key={p.id}
-                      value={`project ${p.name}`}
-                      onSelect={() => go(`/projects/${p.id}`)}
-                      className={ITEM_CLASS}
-                    >
-                      {p.name}
-                    </Command.Item>
-                  ))}
-                </Command.Group>
+                {results.tasks.length ? (
+                  <Command.Group heading="Tasks" className={GROUP_CLASS}>
+                    {results.tasks.map((t) => (
+                      <Command.Item
+                        key={t.id}
+                        value={`task-${t.id}`}
+                        onSelect={() => go(`/tasks?task=${t.id}`)}
+                        className={ITEM_CLASS}
+                      >
+                        <span className="flex items-baseline justify-between gap-3">
+                          <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                          <span className="shrink-0 text-[12px] text-ink-2">
+                            {t.status === "done" ? "Done" : t.status === "dropped" ? "Dropped" : t.due_date ? `due ${t.due_date}` : "Open"}
+                          </span>
+                        </span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+                {results.notes.length ? (
+                  <Command.Group heading="Notes" className={GROUP_CLASS}>
+                    {results.notes.map((n) => (
+                      <Command.Item
+                        key={n.id}
+                        value={`note-${n.id}`}
+                        onSelect={() => go(`/notes/${n.id}`)}
+                        className={ITEM_CLASS}
+                      >
+                        <span className="block truncate">{n.title || "Untitled"}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+                {results.people.length ? (
+                  <Command.Group heading="People" className={GROUP_CLASS}>
+                    {results.people.map((p) => (
+                      <Command.Item
+                        key={p.id}
+                        value={`person-${p.id}`}
+                        onSelect={() => go(`/people/${p.id}`)}
+                        className={ITEM_CLASS}
+                      >
+                        <span className="flex items-baseline justify-between gap-3">
+                          <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                          <span className="shrink-0 truncate text-[12px] text-ink-2">
+                            {[p.relationship, p.company, p.role].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+                {navRows.length + domainRows.length + projectRows.length > 0 ? (
+                  <Command.Group heading="Go to" className={GROUP_CLASS}>
+                    {navRows.map(([href, label]) => (
+                      <Command.Item
+                        key={href}
+                        value={label}
+                        onSelect={() => go(href)}
+                        className={ITEM_CLASS}
+                      >
+                        {label}
+                      </Command.Item>
+                    ))}
+                    {domainRows.map((d) => (
+                      <Command.Item
+                        key={d.id}
+                        value={`domain ${d.name}`}
+                        onSelect={() => go(`/domains/${d.slug}`)}
+                        className={ITEM_CLASS}
+                      >
+                        {d.name}
+                      </Command.Item>
+                    ))}
+                    {projectRows.map((p) => (
+                      <Command.Item
+                        key={p.id}
+                        value={`project ${p.name}`}
+                        onSelect={() => go(`/projects/${p.id}`)}
+                        className={ITEM_CLASS}
+                      >
+                        {p.name}
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
               </Command.List>
               {/* Canvas 2j: the syntax and the keys that work here, on a
                   hairline. ink-2 because both carry information (§8). */}

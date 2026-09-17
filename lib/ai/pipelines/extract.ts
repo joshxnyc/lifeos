@@ -162,7 +162,9 @@ export async function runExtractionSweep(
 
   const { data: pendingItems } = await supabase
     .from("source_items")
-    .select("id, kind, title, text, provider, external_url, occurred_at, domain_id, participants")
+    .select(
+      "id, kind, title, text, provider, external_url, occurred_at, domain_id, participants, raw, content_hash",
+    )
     .eq("user_id", userId)
     .eq("extraction_status", "pending")
     .order("occurred_at", { ascending: false, nullsFirst: false })
@@ -170,7 +172,8 @@ export async function runExtractionSweep(
 
   const items = (pendingItems ?? []) as Pick<
     SourceItem,
-    "id" | "kind" | "title" | "text" | "provider" | "external_url" | "occurred_at" | "domain_id" | "participants"
+    | "id" | "kind" | "title" | "text" | "provider" | "external_url" | "occurred_at" | "domain_id"
+    | "participants" | "raw" | "content_hash"
   >[];
 
   const stats = {
@@ -184,6 +187,7 @@ export async function runExtractionSweep(
     suggestions_expired: expired?.length ?? 0,
     digest_enqueued: false,
     stopped_on_budget: false,
+    skipped: undefined as string | undefined,
   };
 
   if (items.length) {
@@ -236,8 +240,12 @@ export async function runExtractionSweep(
         const domainTasks = (openTasks ?? []).filter(
           (t) => !item.domain_id || t.domain_id === item.domain_id,
         );
+        // Email threads grow by appending: everything before the recorded
+        // offset was already reviewed on a previous pass, so only the tail
+        // goes to the model (full text stays stored and searchable).
+        const offset = item.kind === "email_thread" ? extractionOffset(item.raw, text.length) : 0;
         const system = await loadPrompt("extract-commitments", { context });
-        const userContent = buildItemPrompt(item, text, domainTasks, pendingTitles);
+        const userContent = buildItemPrompt(item, text, domainTasks, pendingTitles, offset);
 
         const result = await callStructured<ExtractionOutput>({
           pipeline: "extractCommitments",

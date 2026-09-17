@@ -87,8 +87,8 @@ export function EnablePush({
       try {
         const reg = await readyRegistration();
         const sub = reg ? await reg.pushManager.getSubscription() : null;
-        // Installs subscribed before the SW could self-heal: make sure the key
-        // is in IndexedDB for pushsubscriptionchange (sw.ts).
+        // Existing installs subscribed before the SW could self-heal: make
+        // sure the key is in IndexedDB for pushsubscriptionchange (sw.ts).
         if (sub) void storeVapidPublicKey(vapidPublicKey);
         if (cancelled) return;
         setBrowserEndpoint(sub?.endpoint ?? null);
@@ -120,8 +120,7 @@ export function EnablePush({
 
       let sub = await reg.pushManager.getSubscription();
       if (sub) {
-        const endpoint = sub.endpoint;
-        const row = devices.find((d) => d.endpoint === endpoint);
+        const row = devices.find((d) => d.endpoint === sub!.endpoint);
         // A subscription the server lost, or one that stopped accepting
         // deliveries, is dead weight: mint a fresh endpoint rather than
         // re-registering the stale one.
@@ -173,7 +172,6 @@ export function EnablePush({
           ? `Sent to ${data.delivered} ${data.delivered === 1 ? "device" : "devices"}.`
           : "No registered device accepted the push.",
       );
-      // last_used_at / failed_count moved: refresh the server-rendered roster.
       router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "The test push failed.");

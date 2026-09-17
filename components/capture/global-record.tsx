@@ -88,7 +88,10 @@ export function GlobalRecord() {
       } else {
         const summary = summarizeCapture(row.result);
         const clarification = row.result?.needs_clarification?.trim();
-        toast(clarification ? `${summary}. ${clarification}` : summary);
+        toast(clarification ? `${summary}. ${clarification}` : summary, {
+          label: "Review",
+          href: `/capture?capture=${captureId}`,
+        });
       }
     } catch (err) {
       if (isNetworkError(err)) {
@@ -126,6 +129,11 @@ export function GlobalRecord() {
               <p className="tabular mb-3 font-mono text-[13px] text-ink-2">
                 {recording ? formatElapsed(elapsedMs) : "0:00"}
               </p>
+              {recording && elapsedMs >= RECORDING_COUNTDOWN_FROM_MS ? (
+                <p className="tabular -mt-2 mb-3 font-mono text-[13px] text-ink-2">
+                  Stops in {formatElapsed(Math.max(0, RECORDING_LIMIT_MS - elapsedMs))}
+                </p>
+              ) : null}
               <Waveform analyser={analyser} active={recording} />
 
               <div className="mt-7 flex w-full items-center justify-center gap-8">
