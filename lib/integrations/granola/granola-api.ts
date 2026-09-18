@@ -190,6 +190,12 @@ export function mapNote(raw: RawNote): GranolaNote | null {
 
   const transcript = flattenTranscript(raw.transcript);
 
+  // Normalized to ISO UTC: the sync cursor compares occurredAt values
+  // lexicographically, which is only chronological when every timestamp has
+  // the same form (the raw field can carry an offset like +00:00).
+  const rawWhen = raw.started_at ?? raw.meeting_at ?? raw.created_at;
+  const parsedWhen = rawWhen ? Date.parse(rawWhen) : Number.NaN;
+
   return {
     id,
     title: raw.title ?? raw.name ?? "Untitled meeting",
@@ -197,7 +203,9 @@ export function mapNote(raw: RawNote): GranolaNote | null {
     myNotes: raw.my_notes ?? raw.user_notes ?? raw.notes,
     transcript,
     attendees,
-    occurredAt: raw.started_at ?? raw.meeting_at ?? raw.created_at ?? new Date().toISOString(),
+    occurredAt: Number.isNaN(parsedWhen)
+      ? new Date().toISOString()
+      : new Date(parsedWhen).toISOString(),
     url: raw.url ?? raw.share_url ?? `https://notes.granola.ai/d/${id}`,
   };
 }
