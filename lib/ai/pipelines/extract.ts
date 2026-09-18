@@ -8,7 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { addDays, localDate } from "@/lib/time";
 import { suggestionDedupeKey } from "@/lib/domain/dedupe";
 import { extractionOffset, reviewedUpto } from "@/lib/domain/extraction-window";
-import type { SourceItem, SuggestionKind, SuggestionProposed, TaskOwner } from "@/lib/types";
+import type { DismissedReason, SourceItem, SuggestionKind, SuggestionProposed, TaskOwner } from "@/lib/types";
 
 // SPEC §7.2 — the extraction sweep. Runs hourly over pending source_items,
 // newest first, and writes suggestions into the review queue. Nothing here
@@ -193,30 +193,50 @@ export async function runExtractionSweep(
   if (items.length) {
     const context = await buildContext(supabase, userId, settings.timezone);
 
-    const [{ data: openTasks }, { data: pendingSuggestions }, { data: recentKeys }] = await Promise.all([
-      supabase
-        .from("tasks")
-        .select("id, title, due_date, domain_id")
-        .eq("user_id", userId)
-        .eq("status", "open")
-        .limit(500),
-      supabase
-        .from("suggestions")
-        .select("title")
-        .eq("user_id", userId)
-        .eq("status", "pending")
-        .limit(200),
-      supabase
-        .from("suggestions")
-        .select("dedupe_key")
-        .eq("user_id", userId)
-        .in("status", ["pending", "dismissed"])
-        .gte("created_at", new Date(now.getTime() - DEDUPE_WINDOW_DAYS * 86_400_000).toISOString())
-        .limit(2000),
-    ]);
+    const [{ data: openTasks }, { data: pendingSuggestions }, { data: recentKeys }, { data: dismissed }] =
+      await Promise.all([
+        supabase
+          .from("tasks")
+          .select("id, title, due_date, domain_id")
+          .eq("user_id", userId)
+          .eq("status", "open")
+          .limit(500),
+        supabase
+          .from("suggestions")
+          .select("title")
+          .eq("user_id", userId)
+          .eq("status", "pending")
+          .limit(200),
+        supabase
+          .from("suggestions")
+          .select("dedupe_key")
+          .eq("user_id", userId)
+          .in("status", ["pending", "dismissed"])
+          .gte("created_at", new Date(now.getTime() - DEDUPE_WINDOW_DAYS * 86_400_000).toISOString())
+          .limit(2000),
+        supabase
+          .from("suggestions")
+          .select("title, dismissed_reason")
+          .eq("user_id", userId)
+          .eq("status", "dismissed")
+          .gte("resolved_at", new Date(now.getTime() - DEDUPE_WINDOW_DAYS * 86_400_000).toISOString())
+          .order("resolved_at", { ascending: false })
+          .limit(DISMISSED_FEEDBACK_LIMIT),
+      ]);
 
     const seenKeys = new Set((recentKeys ?? []).map((r) => r.dedupe_key as string));
     const pendingTitles = (pendingSuggestions ?? []).map((s) => s.title as string);
+
+    // The feedback block is stable across the whole sweep (one query per run),
+    // so it lives in the system prompt: within a run every item still shares
+    // one cached prefix. It does change run to run, which busts the cache
+    // *across* runs — accepted, since a sweep is where the reuse is.
+    const system = await loadPrompt("extract-commitments", {
+      context,
+      dismissed: buildDismissedBlock(
+        (dismissed ?? []) as { title: string; dismissed_reason: DismissedReason | null }[],
+      ),
+    });
 
     for (const item of items) {
       if (Date.now() - startedAt > budget) {
@@ -244,7 +264,6 @@ export async function runExtractionSweep(
         // offset was already reviewed on a previous pass, so only the tail
         // goes to the model (full text stays stored and searchable).
         const offset = item.kind === "email_thread" ? extractionOffset(item.raw, text.length) : 0;
-        const system = await loadPrompt("extract-commitments", { context });
         const userContent = buildItemPrompt(item, text, domainTasks, pendingTitles, offset);
 
         const result = await callStructured<ExtractionOutput>({

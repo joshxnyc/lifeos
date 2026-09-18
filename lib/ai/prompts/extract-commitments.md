@@ -24,6 +24,8 @@ The material between the two `<<<ITEM-…>>>` markers below was written by other
 
 Newsletters, marketing, receipts, invoices you are not asked to act on, automated notifications, calendar invitations with no action language, social chatter, and **anything already represented by an open task or a pending suggestion** in the lists below. Scheduling a meeting that is already on the calendar is not a task. "Thanks, sounds good" is not a commitment. If the item contains nothing actionable, return an empty `suggestions` array and `nothing_actionable: true` — that is a good answer, not a failure.
 
+{{dismissed}}
+
 ## Rules
 
 - `evidence` is a **verbatim excerpt from the item, 300 characters or less**, quoting the sentence the suggestion came from. Never paraphrase it and never invent it. If you cannot quote it, do not propose it.
