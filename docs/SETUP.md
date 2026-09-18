@@ -35,8 +35,8 @@ At [vercel.com](https://vercel.com) (Hobby tier):
 
 ### 4. API keys
 
-- [ ] `ANTHROPIC_API_KEY` — [console.anthropic.com](https://console.anthropic.com) (extraction, filing, coach; expect ~$3–8/month)
-- [ ] `OPENAI_API_KEY` — [platform.openai.com](https://platform.openai.com) (transcription only; <$1/month)
+- [ ] `OPENROUTER_API_KEY` — [openrouter.ai](https://openrouter.ai/keys). The single LLM key (Joshua's decision, 2026-09-15): Claude Sonnet via OpenRouter for extraction/filing/coach, Claude Haiku for cleanup, Gemini Flash for voice transcription. Expect ~$3–8/month plus OpenRouter's ~5% fee.
+- [ ] `OPENAI_API_KEY` — optional. OpenRouter has no Whisper endpoint, so transcription runs through an audio-capable chat model. If browser-recorded audio (Safari `audio/mp4`, Chrome `audio/webm`) ever transcribes poorly through OpenRouter, set this and direct Whisper takes over transcription automatically.
 
 ### 5. Generate secrets (one terminal session)
 
@@ -64,6 +64,33 @@ npx web-push generate-vapid-keys   # → VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
 - [ ] Confirm times or accept defaults: morning brief 07:00 · evening close-out 21:00 · weekly review Sunday 17:00 · quiet hours 23:00–06:30 (all changeable in Settings later)
 
 **Phase 0 is buildable once steps 1–5 are done.** Its live-in-it test: app installed on the iPhone home screen and on the Mac, and a test push arrives on the phone.
+
+### 7. After the first deploy: run migrations and point pg_cron at the app
+
+```bash
+# from the repo, with the Supabase CLI linked to the project
+supabase link --project-ref <ref>
+supabase db push          # applies /supabase/migrations
+```
+
+Then in the Supabase SQL editor, tell the cron jobs where the app lives
+(they read this at call time — see `supabase/migrations/20260915000002_cron.sql`):
+
+```sql
+insert into private.app_config (key, value) values
+  ('app_url', 'https://<your-domain>'),
+  ('jobs_secret', '<JOBS_SECRET value>')
+on conflict (key) do update set value = excluded.value;
+```
+
+Finally create your user (Authentication → Add user) — this auto-seeds the
+four domains and default settings via a trigger. Then, security musts:
+
+- **Disable public signups**: Authentication → Sign In / Up → turn "Allow new
+  users to sign up" off (the login page has no signup, but the Supabase API
+  would otherwise accept direct signups).
+- **Pin the owner**: copy your user's UUID (Authentication → Users) into the
+  `OWNER_USER_ID` env var in Vercel.
 
 ---
 
