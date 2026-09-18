@@ -122,3 +122,15 @@ describe("taskDueLabel", () => {
     );
   });
 });
+
+describe("snoozeRoutineId", () => {
+  it("keys on the task and the UTC hour of the snoozed fire time", () => {
+    const id = "3f8a1b2c-0000-4000-8000-000000000001";
+    expect(snoozeRoutineId(id, at("2026-09-18T18:40:00Z"))).toBe(`task_due:${id}:snooze:18`);
+  });
+
+  it("never collides with schedule-day's plain task_due key for the same task", () => {
+    const id = "3f8a1b2c-0000-4000-8000-000000000001";
+    expect(snoozeRoutineId(id, at("2026-09-18T18:40:00Z"))).not.toBe(`task_due:${id}`);
+  });
+});

@@ -20,6 +20,10 @@ const TIME_BUDGET_MS = 45_000;
 const MIN_CONFIDENCE = 0.5;
 const DEDUPE_WINDOW_DAYS = 30;
 const EXPIRE_AFTER_DAYS = 14;
+/** Recent dismissals fed back into the system prompt so they teach the model. */
+const DISMISSED_FEEDBACK_LIMIT = 20;
+const DISMISSED_BLOCK_MAX_CHARS = 1500;
+const DISMISSED_TITLE_MAX_CHARS = 60;
 /** ~6k tokens of item text. */
 const MAX_ITEM_CHARS = 24_000;
 
@@ -362,6 +366,67 @@ async function markItem(
     .from("source_items")
     .update({ extraction_status: status, extracted_at: now.toISOString() })
     .eq("id", itemId);
+}
+
+const DISMISSED_GROUP_LABEL: Record<DismissedReason | "no_reason", string> = {
+  not_a_task: "Dismissed as not a task",
+  already_done: "Dismissed as already done",
+  not_mine: "Dismissed as not his",
+  wrong_details: "Dismissed as right item, wrong details",
+  other: "Dismissed, other reason",
+  no_reason: "Dismissed without a reason",
+};
+
+/**
+ * The feedback loop: recent dismissals, grouped by the one-tap reason Joshua
+ * gave (or none), rendered into the `{{dismissed}}` slot of the system prompt.
+ * Capped at ~1500 chars — whole lines are dropped, never cut mid-title.
+ * Returns "" when there is nothing to teach, which erases the slot.
+ */
+export function buildDismissedBlock(
+  rows: { title: string; dismissed_reason: DismissedReason | null }[],
+): string {
+  if (!rows.length) return "";
+
+  const groups = new Map<DismissedReason | "no_reason", string[]>();
+  for (const row of rows) {
+    if (!row.title) continue;
+    const key = row.dismissed_reason ?? "no_reason";
+    if (!groups.has(key)) groups.set(key, []);
+    const title = row.title.length > DISMISSED_TITLE_MAX_CHARS
+      ? `${row.title.slice(0, DISMISSED_TITLE_MAX_CHARS - 1)}…`
+      : row.title;
+    groups.get(key)!.push(title);
+  }
+  if (!groups.size) return "";
+
+  const lines = [
+    "## Recently dismissed by Joshua",
+    "",
+    "He dismissed these suggestions in the last 30 days. Do not re-propose them or close variants of them. Treat the 'not a task' group as evidence that his bar for a real commitment is higher than yours — raise yours to match. The 'wrong details' group is different: the underlying item may be real but the details were wrong — extract more carefully there, don't suppress.",
+    "",
+  ];
+  let length = lines.join("\n").length;
+  const order: (DismissedReason | "no_reason")[] = [
+    "not_a_task", "already_done", "not_mine", "wrong_details", "other", "no_reason",
+  ];
+  for (const key of order) {
+    const titles = groups.get(key);
+    if (!titles) continue;
+    const header = `${DISMISSED_GROUP_LABEL[key]}:`;
+    const first = `- ${titles[0]}`;
+    // Never leave a dangling header: the header only lands with its first title.
+    if (length + header.length + first.length + 2 > DISMISSED_BLOCK_MAX_CHARS) break;
+    lines.push(header, first);
+    length += header.length + first.length + 2;
+    for (const title of titles.slice(1)) {
+      const line = `- ${title}`;
+      if (length + line.length + 1 > DISMISSED_BLOCK_MAX_CHARS) return lines.join("\n");
+      lines.push(line);
+      length += line.length + 1;
+    }
+  }
+  return lines.join("\n");
 }
 
 function buildItemPrompt(

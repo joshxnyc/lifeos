@@ -5,6 +5,7 @@ import { buildContext } from "@/lib/ai/context";
 import { getSettings } from "@/lib/settings";
 import { enqueueNotification } from "@/lib/notify";
 import { matchPersonInText } from "@/lib/domain/person-match";
+import { matchTaskByTitle } from "@/lib/domain/task-match";
 import { localDate } from "@/lib/time";
 import { mimeForExt, transcribeAudio, transcriptionPrompt } from "@/lib/transcribe";
 import type { Capture, CaptureResult } from "@/lib/types";
@@ -51,11 +52,14 @@ export const FILE_CAPTURE_SCHEMA: Record<string, unknown> = {
           "fact",
           "new_person",
           "duration_minutes",
+          "task_id",
+          "target_title",
+          "changes",
         ],
         properties: {
           type: {
             type: "string",
-            enum: ["task", "note", "routine_log", "person_update", "reminder"],
+            enum: ["task", "note", "routine_log", "person_update", "reminder", "task_edit"],
           },
           title: { ...NULLABLE_STRING, description: "Task/reminder/note title in Joshua's own words." },
           body_md: { ...NULLABLE_STRING, description: "Markdown detail. Required for a note." },
