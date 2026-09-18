@@ -1,105 +1,74 @@
 // Cursor advancement for truncated sync runs. Pure on purpose: the sync jobs
-// (Notion, Granola) feed in what they managed to process and get back either a
-// new cursor or null ("do not advance"). The invariant both functions protect:
-// after any run, every item the source holds that is newer than the stored
-// cursor has either been ingested or will be returned by the next run's fetch.
-// Never advancing (the old behavior) satisfies that trivially but livelocks on
-// a persistent oversized backlog — every run refetches the same head. These
-// boundaries advance as far as is provably safe, so a big backlog drains a
-// slice per run instead of stalling forever.
-
-export interface StreamProgress {
-  /**
-   * The oldest timestamp this stream handled this run ("handled" = ingested
-   * now, or skipped only because another stream ingested the same page earlier
-   * in the same run). Null when the stream handled nothing.
-   */
-  oldestHandled: string | null;
-  /**
-   * True when the stream may hold items this run did not deliver: it was cut
-   * off by a budget or deadline, its fetch hit a page cap, or it errored.
-   */
-  truncated: boolean;
-}
-
-/**
- * Subtracted from a descending-streams boundary. Notion's last_edited_time has
- * minute granularity, so a stream cut between two pages edited in the same
- * minute would otherwise strand the unfetched one exactly at the cursor
- * (searchShared fetches strictly newer than the cursor).
- */
-export const DESCENDING_BOUNDARY_SAFETY_MS = 60_000;
+// (Notion, Granola) feed in what they fetched and processed and get back either
+// a new cursor or null ("do not advance").
+//
+// The invariant: the cursor only ever advances past a timestamp when every item
+// at or before it has been ingested. Never advancing on a truncated run (the
+// old behavior) satisfies that trivially but livelocks on a persistent
+// oversized backlog — every run refetches and re-processes the same head. The
+// sound way to get both safety and progress:
+//
+//   1. Fetch item HEADERS exhaustively for everything newer than the cursor
+//      (headers are cheap; the expensive part is hydrating each item).
+//   2. Sort ascending and process OLDEST-FIRST up to the processing budget.
+//   3. On truncation, advance to the oldest UNPROCESSED timestamp: everything
+//      older was just processed, everything unprocessed is at or after it and
+//      is refetched next run. Each run then drains a slice from the bottom.
+//
+// Processing oldest-first is what makes this work. Any fixed order with a
+// pinned cursor re-processes the same slice forever; newest-first processing
+// can never advance safely because the source's stream order says nothing
+// about how old its unfetched remainder is (edit times have gaps).
+//
+// When the FETCH itself was cut short (page cap, deadline, error), unfetched
+// items have unknown timestamps and no advance is safe — the cursor stays put.
+// That is the one residual livelock, so callers keep their header-fetch budget
+// well above any realistic backlog.
 
 /**
- * Several streams, each yielding items newest-first (Notion: the shared-pages
- * search plus one stream per configured database).
- *
- * Invariant: within one descending stream, everything NOT handled is at most
- * as new as the oldest item that was handled. So a truncated stream's unseen
- * items all satisfy t <= oldestHandled(stream), and a cursor at
- * min(oldestHandled over truncated streams) - safety refetches every one of
- * them next run. Complete streams constrain nothing. A truncated stream that
- * handled nothing (including an errored one) pins the cursor: its unseen items
- * could be barely newer than the previous cursor.
- *
- * Returns the cursor to store, or null to leave it alone.
- */
-export function descendingStreamsCursor(
-  prev: string | null,
-  newestHandled: string | null,
-  streams: StreamProgress[],
-  safetyMs: number = DESCENDING_BOUNDARY_SAFETY_MS,
-): string | null {
-  const truncated = streams.filter((s) => s.truncated);
-
-  if (truncated.length === 0) {
-    // Clean run: everything newer than prev was handled.
-    if (!newestHandled) return null;
-    return !prev || newestHandled > prev ? newestHandled : null;
-  }
-
-  let bound: string | null = null;
-  for (const s of truncated) {
-    if (s.oldestHandled === null) return null; // zero progress somewhere: pin
-    if (bound === null || s.oldestHandled < bound) bound = s.oldestHandled;
-  }
-  if (bound === null) return null;
-
-  const parsed = Date.parse(bound);
-  if (Number.isNaN(parsed)) return null;
-  const candidate = new Date(parsed - safetyMs).toISOString();
-  return !prev || candidate > prev ? candidate : null;
-}
-
-/**
- * One fetched batch, sorted ascending by timestamp, processed as a prefix
- * (Granola). The source's own order is not contract-stable, so the caller
- * buffers what the adapter returned, sorts it, and processes oldest-first.
- *
- * Invariants:
- * - Processing truncated (processedCount < ascendingAts.length): every
- *   unprocessed item sits at or after ascendingAts[processedCount], so a
- *   cursor there refetches all of them (the caller's read-side overlap also
- *   absorbs equal timestamps). Safe only when the fetch itself was exhaustive;
- *   otherwise unfetched items of unknown age forbid any advance.
- * - Everything processed: advance to the newest processed timestamp, again
- *   only when the fetch was exhaustive.
- *
- * Returns the cursor to store, or null to leave it alone.
+ * @param prev            the stored cursor, or null on the first run.
+ * @param ascendingAts    timestamps of every item fetched this run, sorted
+ *                        ascending; the run processed a prefix of this list.
+ * @param processedCount  how many items of that prefix were processed.
+ * @param exhausted       true when the fetch delivered everything the source
+ *                        had that was newer than `prev` — false on a page cap,
+ *                        deadline during the fetch, or a fetch error.
+ * @param safetyMs        subtracted from a truncation boundary. Use it when
+ *                        the next fetch is STRICTLY-newer-than-cursor and
+ *                        timestamps are coarse (Notion's last_edited_time has
+ *                        minute granularity), so an unprocessed item sitting
+ *                        exactly on the boundary is still refetched. Callers
+ *                        whose next read applies an overlap (Granola) need 0.
+ * @returns the cursor to store, or null to leave it alone.
  */
 export function ascendingPrefixCursor(
   prev: string | null,
   ascendingAts: readonly string[],
   processedCount: number,
   exhausted: boolean,
+  safetyMs = 0,
 ): string | null {
   if (!exhausted) return null;
   if (processedCount <= 0 || ascendingAts.length === 0) return null;
 
-  const candidate =
-    processedCount < ascendingAts.length
-      ? ascendingAts[processedCount] // oldest unprocessed
-      : ascendingAts[ascendingAts.length - 1]; // newest processed
+  let candidate: string | undefined;
+  if (processedCount < ascendingAts.length) {
+    // Truncated: land just before the oldest unprocessed item. Everything
+    // unprocessed is >= it, so all of it comes back next run; everything
+    // < it was processed this run (ascending prefix).
+    const bound = ascendingAts[processedCount];
+    if (!bound) return null;
+    if (safetyMs > 0) {
+      const parsed = Date.parse(bound);
+      if (Number.isNaN(parsed)) return null;
+      candidate = new Date(parsed - safetyMs).toISOString();
+    } else {
+      candidate = bound;
+    }
+  } else {
+    // Clean run: everything fetched was processed.
+    candidate = ascendingAts[ascendingAts.length - 1];
+  }
 
   if (!candidate) return null;
   return !prev || candidate > prev ? candidate : null;

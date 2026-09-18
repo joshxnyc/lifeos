@@ -102,14 +102,9 @@ export async function syncNotion(opts: {
   const config = await getNotionConfig(supabase, userId);
   const state = (account.sync_state ?? {}) as { last_edited_cursor?: string | null };
   const cursor = state.last_edited_cursor ?? null;
-  let newest = cursor;
 
-  const seen = new Set<string>();
   const ingest = async (page: NotionSearchResult, dbConfig?: NotionDatabaseConfig) => {
-    if (seen.has(page.id) || stats.pages_seen >= PAGE_BUDGET) return;
-    seen.add(page.id);
     stats.pages_seen += 1;
-    if (!newest || page.last_edited_time > newest) newest = page.last_edited_time;
 
     const propertyLines = Object.entries(page.properties)
       .map(([name, value]) => {
