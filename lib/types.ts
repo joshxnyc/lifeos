@@ -109,7 +109,8 @@ export interface Capture extends Base {
 
 export interface CaptureResult {
   items: Array<{
-    type: "task" | "note" | "routine_log" | "person_update" | "reminder";
+    /** task_edit changed an existing task in place — there is no created row to undo. */
+    type: "task" | "note" | "routine_log" | "person_update" | "reminder" | "task_edit";
     id?: string;
     title?: string;
     detail?: string;

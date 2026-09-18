@@ -14,6 +14,7 @@ import {
 import { getNotionConfig, type NotionDatabaseConfig } from "@/lib/integrations/notion/config";
 import { mergeSyncState, markSynced, setAccountError } from "@/lib/integrations/accounts";
 import { upsertSourceItem } from "@/lib/integrations/source-items";
+import { descendingStreamsCursor, type StreamProgress } from "@/lib/domain/sync-cursor";
 import type { ConnectedAccount } from "@/lib/types";
 
 /**

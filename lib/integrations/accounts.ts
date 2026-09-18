@@ -73,13 +73,30 @@ export async function setAccountError(
     .eq("id", accountId);
 }
 
-export async function markSynced(supabase: SupabaseClient, accountId: string): Promise<void> {
+export async function markSynced(
+  supabase: SupabaseClient,
+  accountId: string,
+  opts?: {
+    /**
+     * Keep last_error instead of clearing it. For a run that reached the end
+     * but recorded a partial failure on the way (e.g. one Notion database out
+     * of several failed to query): the sync time still moves, but the error
+     * stays visible in Settings instead of being wiped by the run's own tail.
+     */
+    keepError?: boolean;
+  },
+): Promise<void> {
   // A successful sync proves auth works, so a needs_reauth flag is stale —
   // clear it. Disabled accounts never reach here, but guard anyway so a
   // sync bug can never silently re-enable one.
+  const patch: Record<string, unknown> = {
+    last_synced_at: new Date().toISOString(),
+    status: "active",
+  };
+  if (!opts?.keepError) patch.last_error = null;
   await supabase
     .from("connected_accounts")
-    .update({ last_synced_at: new Date().toISOString(), last_error: null, status: "active" })
+    .update(patch)
     .eq("id", accountId)
     .neq("status", "disabled");
 }

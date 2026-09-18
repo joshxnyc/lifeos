@@ -489,7 +489,7 @@ async function createRows(
         id: target.id,
         title: newTitle || target.title,
         detail: details.join(" · ") || undefined,
-      } as unknown as CaptureResult["items"][number]);
+      });
       continue;
     }
 

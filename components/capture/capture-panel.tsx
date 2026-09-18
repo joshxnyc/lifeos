@@ -416,7 +416,9 @@ export function CapturePanel({
                       ) : null}
                     </div>
                   </div>
-                  {item.id ? (
+                  {/* An edit changed a task in place; there is no created row to
+                      undo, so the affordance would only mislead. */}
+                  {item.id && item.type !== "task_edit" ? (
                     <button
                       onClick={() => undo(item.id!, item.type)}
                       className="h-11 shrink-0 px-2 text-[13px] text-accent"
@@ -512,4 +514,5 @@ const LABELS: Record<string, string> = {
   note: "Note",
   routine_log: "Routine logged",
   person_update: "Person update",
+  task_edit: "Task updated",
 };
