@@ -77,6 +77,7 @@ const NAV: Array<[string, string]> = [
   ["/people", "People"],
   ["/notes", "Notes"],
   ["/search", "Search"],
+  ["/chat", "Ask"],
   ["/review", "Weekly Review"],
   ["/settings", "Settings"],
 ];
@@ -316,6 +317,15 @@ export function CommandPalette({ domains, projects }: { domains: Domain[]; proje
                     className={ITEM_CLASS}
                   >
                     Search everything for “{query}”
+                  </Command.Item>
+                ) : null}
+                {query.trim() ? (
+                  <Command.Item
+                    value={`ask ${query}`}
+                    onSelect={() => go(`/chat?q=${encodeURIComponent(query)}`)}
+                    className={ITEM_CLASS}
+                  >
+                    Ask about “{query}” — answer with sources
                   </Command.Item>
                 ) : null}
                 {!query.trim() ? (

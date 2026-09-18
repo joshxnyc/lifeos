@@ -28,6 +28,7 @@ const moreLinks = [
   { href: "/people", label: "People", icon: Users },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/search", label: "Search", icon: Search },
+  { href: "/chat", label: "Ask", icon: MessageCircle },
   { href: "/review", label: "Weekly Review", icon: ClipboardList },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

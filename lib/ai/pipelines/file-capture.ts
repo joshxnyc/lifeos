@@ -410,6 +410,83 @@ async function createRows(
     }
     if (projectId) touchedProjects.add(projectId);
 
+    if (item.type === "task_edit") {
+      const named = item.target_title?.trim() || item.title?.trim() || "";
+      // The id must come from the fetched open non-mirror set — a hallucinated,
+      // closed or mirrored id falls through to title resolution instead.
+      let target = item.task_id ? (openTaskById.get(item.task_id) ?? null) : null;
+      if (!target && named) target = matchTaskByTitle(named, openTasks);
+      if (!target) {
+        notes.push(
+          named
+            ? `Couldn't find an open task like "${named}" — nothing was changed.`
+            : "An edit named no findable task — nothing was changed.",
+        );
+        continue;
+      }
+
+      const changes = item.changes;
+      const update: Record<string, unknown> = {};
+      const details: string[] = [];
+      if (changes?.due_date) {
+        update.due_date = changes.due_date;
+        if (changes.due_time) update.due_time = changes.due_time;
+        details.push(`moved to ${changes.due_date}${changes.due_time ? ` at ${changes.due_time}` : ""}`);
+      } else if (changes?.due_time) {
+        update.due_time = changes.due_time;
+        details.push(`moved to ${changes.due_time}`);
+      }
+      if (changes?.scheduled_date) {
+        update.scheduled_date = changes.scheduled_date;
+        details.push(`scheduled for ${changes.scheduled_date}`);
+      }
+      if (typeof changes?.priority === "number") {
+        const p = clampPriority(changes.priority);
+        update.priority = p;
+        details.push(`priority ${PRIORITY_WORDS[p]}`);
+      }
+      const newTitle = changes?.title?.trim();
+      if (newTitle) {
+        update.title = newTitle;
+        details.push(`renamed to "${newTitle}"`);
+      }
+      if (changes?.status === "done") {
+        update.status = "done";
+        update.completed_at = new Date().toISOString();
+        details.push("marked done");
+      } else if (changes?.status === "dropped") {
+        update.status = "dropped";
+        update.dropped_reason = "Dropped via capture";
+        details.push("dropped");
+      }
+
+      if (!Object.keys(update).length) {
+        notes.push(`No change to apply to "${target.title}".`);
+        continue;
+      }
+
+      // RLS scopes the update to Joshua's rows; the explicit filters repeat
+      // the never-edit-a-mirror rule at the write itself.
+      const { error: updateError } = await supabase
+        .from("tasks")
+        .update(update)
+        .eq("id", target.id)
+        .eq("user_id", userId)
+        .eq("is_mirror", false);
+      if (updateError) {
+        notes.push(`Couldn't update "${target.title}": ${updateError.message}`);
+        continue;
+      }
+      if (target.project_id) touchedProjects.add(target.project_id);
+      items.push({
+        type: "task_edit",
+        id: target.id,
+        title: newTitle || target.title,
+        detail: details.join(" · ") || undefined,
+      });
+      continue;
+    }
+
     if (item.type === "task" || item.type === "reminder") {
       const title = item.title?.trim();
       if (!title) continue;
@@ -562,6 +639,9 @@ async function createRows(
   const clarification = [output.needs_clarification?.trim() || "", ...notes].filter(Boolean).join(" ");
   return { items, needs_clarification: clarification || undefined };
 }
+
+/** Indexed by the 0–3 priority scale, for human-readable edit details. */
+const PRIORITY_WORDS = ["none", "low", "medium", "high"] as const;
 
 function clampPriority(value: number | null): 0 | 1 | 2 | 3 {
   const n = Math.round(value ?? 0);
