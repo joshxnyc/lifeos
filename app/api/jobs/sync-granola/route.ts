@@ -60,26 +60,44 @@ export const POST = jobRoute("sync-granola", async ({ supabase, userId }) => {
   if (!client) return { skipped: "Granola not connected" };
 
   const state = (account.sync_state ?? {}) as { created_after?: string };
-  const since = state.created_after
-    ? new Date(Date.parse(state.created_after) - OVERLAP_DAYS * 86_400_000).toISOString()
-    : new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const cursor = state.created_after ?? null;
+  const since = cursor
+    ? new Date(Date.parse(cursor) - OVERLAP_DAYS * 86_400_000).toISOString()
+    : new Date(Date.now() - INITIAL_BACKFILL_DAYS * 86_400_000).toISOString();
 
   let notes = 0;
   let changed = 0;
-  let newest = state.created_after ?? null;
-  // A run cut short must not advance the cursor past notes it never fetched;
-  // the 2-day overlap only protects against late summaries, not a >MAX_NOTES
-  // backlog (e.g. the first sync of a busy month).
-  let truncated = false;
+
+  // Cursor rule (see lib/domain/sync-cursor.ts): Granola's yield order is not
+  // contract-stable, so buffer the note headers, sort ascending by occurredAt
+  // and process OLDEST-FIRST. A run cut short by MAX_NOTES or the deadline
+  // then advances the cursor to the oldest UNPROCESSED note: everything
+  // unprocessed sits at or after it and the 2-day read overlap re-fetches it
+  // next run, so a >MAX_NOTES backlog (e.g. the first sync of a busy week)
+  // drains a slice per run instead of refetching the same head forever. When
+  // the listing itself was cut short (page cap, deadline mid-list), unfetched
+  // notes have unknown timestamps and the cursor stays put.
+  const fetched: GranolaNote[] = [];
+  let exhausted = false;
+  let processed = 0;
 
   try {
-    for await (const note of client.listNotes(since)) {
-      if (notes >= MAX_NOTES || Date.now() > deadline) {
-        truncated = true;
+    const listing = client.listNotes(since);
+    while (fetched.length < FETCH_BUDGET && Date.now() < deadline) {
+      const next = await listing.next();
+      if (next.done) {
+        exhausted = next.value.exhausted;
         break;
       }
-      notes += 1;
+      fetched.push(next.value);
+    }
 
+    fetched.sort((a, b) => (a.occurredAt < b.occurredAt ? -1 : a.occurredAt > b.occurredAt ? 1 : 0));
+
+    for (const note of fetched) {
+      if (processed >= MAX_NOTES || Date.now() > deadline) break;
+
+      if (!note.transcript) note.transcript = await client.fetchTranscript(note);
       const text = [
         note.summary,
         note.myNotes ? `My notes:\n${note.myNotes}` : "",
@@ -101,8 +119,9 @@ export const POST = jobRoute("sync-granola", async ({ supabase, userId }) => {
         occurredAt: note.occurredAt,
         defaultDomainId: account.default_domain_id,
       });
+      processed += 1;
+      notes += 1;
       if (result.changed) changed += 1;
-      if (!newest || note.occurredAt > newest) newest = note.occurredAt;
     }
   } catch (err) {
     // Never crash the job on the MCP/API path — record it on the account and
@@ -113,10 +132,26 @@ export const POST = jobRoute("sync-granola", async ({ supabase, userId }) => {
       .update({ last_error: message, status: /unauthor|reconnect|invalid/i.test(message) ? "needs_reauth" : account.status })
       .eq("id", account.id);
     return { adapter: client.adapter, notes, changed, error: message, ms: Date.now() - started };
+  } finally {
+    await client.close();
   }
 
-  if (newest && !truncated) await mergeSyncState(supabase, account.id, { created_after: newest });
+  const nextCursor = ascendingPrefixCursor(
+    cursor,
+    fetched.map((n) => n.occurredAt),
+    processed,
+    exhausted,
+  );
+  if (nextCursor) await mergeSyncState(supabase, account.id, { created_after: nextCursor });
   await markSynced(supabase, account.id);
 
-  return { adapter: client.adapter, notes, changed, truncated, cursor: newest, ms: Date.now() - started };
+  const truncated = !exhausted || processed < fetched.length;
+  return {
+    adapter: client.adapter,
+    notes,
+    changed,
+    truncated,
+    cursor: nextCursor ?? cursor,
+    ms: Date.now() - started,
+  };
 });
