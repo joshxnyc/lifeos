@@ -26,6 +26,7 @@ const NOUNS: Record<string, [one: string, many: string]> = {
   note: ["note", "notes"],
   routine_log: ["routine log", "routine logs"],
   person_update: ["person update", "person updates"],
+  task_edit: ["task update", "task updates"],
 };
 
 /** "Added 2 tasks and 1 note" — counts by kind, in the order they were filed. */

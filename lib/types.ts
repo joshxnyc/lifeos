@@ -109,7 +109,7 @@ export interface Capture extends Base {
 
 export interface CaptureResult {
   items: Array<{
-    type: "task" | "note" | "routine_log" | "person_update" | "reminder";
+    type: "task" | "note" | "routine_log" | "person_update" | "reminder" | "task_edit";
     id?: string;
     title?: string;
     detail?: string;
