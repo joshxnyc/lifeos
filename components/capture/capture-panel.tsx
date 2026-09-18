@@ -318,7 +318,9 @@ export function CapturePanel({
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
 
   const undo = (itemId: string, type: CaptureResult["items"][number]["type"]) => {
-    if (!captureId) return;
+    // task_edit changed a task in place — nothing was created, nothing to undo.
+    // The button is hidden for edits; this guard keeps the types honest too.
+    if (!captureId || type === "task_edit") return;
     setRow((prev) =>
       prev?.result
         ? { ...prev, result: { ...prev.result, items: prev.result.items.filter((i) => i.id !== itemId) } }

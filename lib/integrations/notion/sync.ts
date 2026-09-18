@@ -149,45 +149,71 @@ export async function syncNotion(opts: {
     }
   };
 
-  // The cursor may only advance when this run saw everything: a run cut short
-  // by the page budget or the deadline has pages older than `newest` still
-  // unfetched, and advancing past them would skip them forever. On a
-  // truncated run the cursor stays put — re-fetches are free (content-hash
-  // upserts) and the next run continues from the same spot.
-  let truncated = false;
-  const outOfRoom = () => {
-    if (Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET) {
-      truncated = true;
-      return true;
+  // Cursor rule (see lib/domain/sync-cursor.ts): each stream — the shared
+  // search plus one per configured database — yields pages newest-edit-first,
+  // so when a stream is cut short everything it did NOT deliver is at most as
+  // old as the oldest page it did. On a clean run the cursor jumps to the
+  // newest edit; on a truncated run it advances to the oldest edit actually
+  // handled across the truncated streams (minus a minute of safety for
+  // Notion's minute-granular timestamps). Nothing newer than the stored
+  // cursor is ever skipped, and a persistent oversized backlog drains a
+  // slice per run instead of livelocking on the same head. Re-fetches stay
+  // free (content-hash upserts).
+  const outOfRoom = () => Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET;
+  const streams: StreamProgress[] = [];
+  const handled = (tracker: StreamProgress, editedAt: string) => {
+    if (!tracker.oldestHandled || editedAt < tracker.oldestHandled) {
+      tracker.oldestHandled = editedAt;
     }
-    return false;
   };
 
   // 1. Everything shared with the integration, newest edit first, stopping at
   //    the cursor (SPEC §6.2: search filtered by last_edited_time > cursor).
+  const searchStream: StreamProgress = { oldestHandled: null, truncated: false };
+  streams.push(searchStream);
   const pages = await searchShared({ objectType: "page", since: cursor, limit: PAGE_BUDGET });
-  if (pages.length >= PAGE_BUDGET) truncated = true; // search itself may have more
+  if (pages.length >= PAGE_BUDGET) searchStream.truncated = true; // search itself may have more
   for (const page of pages) {
-    if (outOfRoom()) break;
+    if (outOfRoom()) {
+      searchStream.truncated = true;
+      break;
+    }
     const dbConfig = page.parent_database_id
       ? config.databases.find((d) => normalizeId(d.id) === normalizeId(page.parent_database_id ?? ""))
       : undefined;
     await ingest(page, dbConfig);
+    handled(searchStream, page.last_edited_time);
   }
 
   // 2. Each configured database, so task-like rows are never missed even if
   //    search paging cut them off.
+  let hadError = false;
   for (const db of config.databases) {
-    if (outOfRoom()) break;
+    const dbStream: StreamProgress = { oldestHandled: null, truncated: false };
+    streams.push(dbStream);
+    if (outOfRoom()) {
+      dbStream.truncated = true;
+      continue; // keep pushing trackers: an unvisited database also pins the cursor
+    }
     stats.databases_queried += 1;
     try {
       const rows = await queryDatabase(db.id, cursor, PAGE_BUDGET);
-      if (rows.length >= PAGE_BUDGET) truncated = true;
+      if (rows.length >= PAGE_BUDGET) dbStream.truncated = true;
       for (const row of rows) {
-        if (outOfRoom()) break;
+        if (outOfRoom()) {
+          dbStream.truncated = true;
+          break;
+        }
         await ingest(row, db);
+        handled(dbStream, row.last_edited_time);
       }
     } catch (err) {
+      // A database we could not read may hold edits newer than any boundary
+      // this run computed — its tracker stays at zero progress, which pins
+      // the cursor so nothing of it is skipped once it recovers.
+      dbStream.truncated = true;
+      dbStream.oldestHandled = null;
+      hadError = true;
       await setAccountError(
         supabase,
         account.id,
@@ -196,11 +222,14 @@ export async function syncNotion(opts: {
     }
   }
 
-  if (!truncated && newest && newest !== cursor) {
-    await mergeSyncState(supabase, account.id, { last_edited_cursor: newest });
+  const nextCursor = descendingStreamsCursor(cursor, newest, streams);
+  if (nextCursor) {
+    await mergeSyncState(supabase, account.id, { last_edited_cursor: nextCursor });
   }
-  await markSynced(supabase, account.id);
-  stats.cursor = newest;
+  // A per-database error was already written to last_error above; a plain
+  // markSynced would wipe it at the end of the very run that recorded it.
+  await markSynced(supabase, account.id, { keepError: hadError });
+  stats.cursor = nextCursor ?? cursor;
   return stats;
 }
 
