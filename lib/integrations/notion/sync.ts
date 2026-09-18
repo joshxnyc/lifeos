@@ -208,8 +208,23 @@ export async function syncNotion(opts: {
     a.last_edited_time < b.last_edited_time ? -1 : a.last_edited_time > b.last_edited_time ? 1 : 0,
   );
   let processed = 0;
+  // Once the budget is reached, keep going through pages within the safety
+  // margin of the budget boundary before stopping. Stopping mid-cohort would
+  // otherwise stall a bulk edit: with more than PAGE_BUDGET pages sharing one
+  // last_edited_time (minute granularity), the truncation boundary minus the
+  // margin is not > the stored cursor, ascendingPrefixCursor returns null
+  // every run, and the same PAGE_BUDGET pages get re-ingested forever while
+  // the rest of the cohort is never reached. Processing through the margin
+  // makes the first unprocessed page's timestamp exceed the last processed
+  // one by more than the margin, so the truncated run always advances. The
+  // deadline still bounds the overshoot.
+  let stopAfter: number | null = null;
   for (const page of ordered) {
-    if (processed >= PAGE_BUDGET || Date.now() > deadline) break;
+    if (Date.now() > deadline) break;
+    if (processed >= PAGE_BUDGET) {
+      stopAfter ??= Date.parse(ordered[PAGE_BUDGET - 1]!.last_edited_time) + CURSOR_SAFETY_MS;
+      if (Date.parse(page.last_edited_time) > stopAfter) break;
+    }
     const dbConfig = page.parent_database_id
       ? config.databases.find((d) => normalizeId(d.id) === normalizeId(page.parent_database_id ?? ""))
       : undefined;

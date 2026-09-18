@@ -138,7 +138,10 @@ export async function syncGmailForAccount(opts: {
         pageToken,
       });
       for (const h of res.data.history ?? []) {
-        if (h.id) {
+        // History ids are uint64 decimal strings per the API contract; the
+        // regex guard keeps a malformed one from making BigInt() throw and
+        // abort the whole run.
+        if (h.id && /^\d+$/.test(h.id)) {
           const id = BigInt(h.id);
           if (maxRecordId === null || id > maxRecordId) maxRecordId = id;
         }

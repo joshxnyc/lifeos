@@ -43,6 +43,14 @@ export default async function LoginPage({
           Sign in
         </button>
       </form>
+      <p className="mt-6 flex gap-4 text-[12px] text-ink-3">
+        <a href="/privacy" className="hover:text-ink-2">
+          Privacy
+        </a>
+        <a href="/terms" className="hover:text-ink-2">
+          Terms
+        </a>
+      </p>
     </main>
   );
 }

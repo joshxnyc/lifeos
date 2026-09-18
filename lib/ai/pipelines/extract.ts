@@ -314,8 +314,23 @@ export async function runExtractionSweep(
 
         if (rows.length) {
           const { error } = await supabase.from("suggestions").insert(rows);
-          if (error) throw new Error(error.message);
-          stats.suggestions_written += rows.length;
+          if (!error) {
+            stats.suggestions_written += rows.length;
+          } else if (error.code === "23505") {
+            // A concurrent sweep raced past the app-level filter and the
+            // pending-only unique index refused a duplicate — its job. A
+            // multi-row insert fails as a whole, so land the rest one at a
+            // time and drop only the duplicates; throwing here would mark the
+            // item failed and lose every suggestion it produced.
+            for (const row of rows) {
+              const { error: rowError } = await supabase.from("suggestions").insert(row);
+              if (!rowError) stats.suggestions_written += 1;
+              else if (rowError.code === "23505") stats.suggestions_deduped += 1;
+              else throw new Error(rowError.message);
+            }
+          } else {
+            throw new Error(error.message);
+          }
           for (const row of rows) pendingTitles.push(String(row.title));
         }
 

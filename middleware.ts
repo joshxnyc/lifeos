@@ -79,6 +79,10 @@ export async function middleware(request: NextRequest) {
     // The VAPID public key is public by definition; the service worker may
     // need it during pushsubscriptionchange when cookies are absent.
     pathname === "/api/push/vapid-key" ||
+    // Legal pages are linked from the Google OAuth consent screen, which
+    // fetches and shows them to signed-out visitors (and Google's reviewers).
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
     pathname === "/manifest.webmanifest";
 
   if (!user && !isPublic) {
