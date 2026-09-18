@@ -666,3 +666,27 @@ alter table public.tasks add column if not exists duration_minutes integer
 -- ---------------------------------------------------------------------------
 alter table public.suggestions add column if not exists dismissed_reason text
   check (dismissed_reason in ('not_a_task', 'already_done', 'not_mine', 'wrong_details', 'other'));
+
+-- ---------------------------------------------------------------------------
+-- 2026-09-17: unique guarantee for the review queue. Duplicate PENDING
+-- suggestions can no longer exist per (user_id, dedupe_key) — the partial
+-- index leaves dismissed/expired rows alone so a suggestion can still be
+-- legitimately re-proposed after the dedupe window. Standalone block, safe to
+-- run twice (the cleanup no-ops without duplicates; `if not exists` skips the
+-- re-create). Mirrors supabase/migrations/20260917000008_suggestions_dedupe_unique.sql.
+-- ---------------------------------------------------------------------------
+with ranked as (
+  select id,
+         row_number() over (partition by user_id, dedupe_key order by created_at desc) as rn
+  from public.suggestions
+  where status = 'pending'
+)
+update public.suggestions s
+set status = 'expired', resolved_at = now()
+from ranked r
+where s.id = r.id
+  and r.rn > 1;
+
+create unique index if not exists suggestions_pending_dedupe_uidx
+  on public.suggestions(user_id, dedupe_key)
+  where status = 'pending';
