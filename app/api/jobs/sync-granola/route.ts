@@ -1,9 +1,11 @@
 import { jobRoute } from "@/lib/jobs";
 import { serverEnv } from "@/lib/env";
 import { markSynced, mergeSyncState, setAccountError, safeErrorMessage } from "@/lib/integrations/accounts";
+import { ascendingPrefixCursor } from "@/lib/domain/sync-cursor";
 import { getGranolaClient } from "@/lib/integrations/granola";
 import { ensureGranolaAccount } from "@/lib/integrations/granola/oauth-provider";
 import { upsertSourceItem } from "@/lib/integrations/source-items";
+import type { GranolaNote } from "@/lib/integrations/granola";
 import type { ConnectedAccount } from "@/lib/types";
 
 /**
@@ -18,7 +20,17 @@ import type { ConnectedAccount } from "@/lib/types";
  * job. Extraction, search, people-linking and the queue need no changes.
  */
 const OVERLAP_DAYS = 2;
+/** Rolling window: the first run backfills the last 7 days, like Gmail. */
+const INITIAL_BACKFILL_DAYS = 7;
+/** Notes fully processed per run (transcript fetch + upsert). */
 const MAX_NOTES = 50;
+/**
+ * Note HEADERS buffered per run. Headers are cheap (transcripts are hydrated
+ * only for processed notes); this cap just bounds memory. The cursor can only
+ * advance past unprocessed notes when the listing was exhaustive, so it sits
+ * far above any realistic backlog.
+ */
+const FETCH_BUDGET = 300;
 
 export const maxDuration = 60;
 
