@@ -124,6 +124,7 @@ export const POST = jobRoute("notifications-tick", async ({ supabase, userId, no
     // still carry the deadline this row was enqueued for (reschedules re-enter
     // via schedule-day), and the deadline itself must still be ahead — a row
     // held through quiet hours must not buzz about last night's deadline.
+    // Snoozed rows are the exception to the last clause only (see below).
     let dueTaskId: string | null = null;
     if (n.kind === "task_due") {
       const taskId = typeof n.payload?.task_id === "string" ? (n.payload.task_id as string) : null;

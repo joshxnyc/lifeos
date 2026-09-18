@@ -109,7 +109,7 @@ export interface Capture extends Base {
 
 export interface CaptureResult {
   items: Array<{
-    type: "task" | "note" | "routine_log" | "person_update" | "reminder" | "task_edit";
+    type: "task" | "note" | "routine_log" | "person_update" | "reminder";
     id?: string;
     title?: string;
     detail?: string;
@@ -388,7 +388,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   quiet_hours: { start: "23:00", end: "06:30" },
   extraction_interval_minutes: 60,
-  extraction_lookback_days_initial: 30,
+  extraction_lookback_days_initial: 7,
   dormancy_days: 14,
   queue_digest_enabled: true,
   pushover_enabled: false,

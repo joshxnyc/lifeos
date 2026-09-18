@@ -17,6 +17,13 @@ import type { ConnectedAccount } from "@/lib/types";
  */
 
 const THREADS_PER_RUN = 25;
+/**
+ * Hard ceiling on the initial backfill window. The rolling window is 7 days;
+ * the `extraction_lookback_days_initial` setting is clamped to this so a live
+ * settings row that still carries the old default of 30 (seeded by the init
+ * migration) takes effect as 7 without a manual update to the database.
+ */
+export const GMAIL_BACKFILL_MAX_DAYS = 7;
 const NO_REPLY = /(^|[.\-_+])(no[-._]?reply|do[-._]?not[-._]?reply|notifications?|mailer|postmaster|bounce)@/i;
 
 export interface GmailSyncState {
@@ -76,7 +83,7 @@ export async function syncGmailForAccount(opts: {
 
   if (!state.backfill_done) {
     const q = [
-      `newer_than:${Math.max(1, lookbackDays)}d`,
+      `newer_than:${Math.min(GMAIL_BACKFILL_MAX_DAYS, Math.max(1, lookbackDays))}d`,
       "-in:spam",
       "-in:trash",
       "-category:promotions",
@@ -114,6 +121,13 @@ export async function syncGmailForAccount(opts: {
   const threadIds = new Set<string>();
   let pageToken: string | undefined;
   let newHistoryId = historyId;
+  // The record ids we actually walked. res.data.historyId is the MAILBOX'S
+  // CURRENT history id, not a page watermark — adopting it after a page walk
+  // cut short (thread cap / deadline) would skip every unfetched record. On a
+  // partial walk the cursor advances only to the newest record id seen, so the
+  // next run resumes exactly after it.
+  let maxRecordId: bigint | null = null;
+  let walkedAllPages = false;
   try {
     do {
       const res = await gmail.users.history.list({
@@ -124,6 +138,10 @@ export async function syncGmailForAccount(opts: {
         pageToken,
       });
       for (const h of res.data.history ?? []) {
+        if (h.id) {
+          const id = BigInt(h.id);
+          if (maxRecordId === null || id > maxRecordId) maxRecordId = id;
+        }
         for (const m of h.messagesAdded ?? []) {
           const labels = m.message?.labelIds ?? [];
           const excluded = ["SPAM", "TRASH", "CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL"];
@@ -133,7 +151,11 @@ export async function syncGmailForAccount(opts: {
       }
       if (res.data.historyId) newHistoryId = res.data.historyId;
       pageToken = res.data.nextPageToken ?? undefined;
+      walkedAllPages = !pageToken;
     } while (pageToken && threadIds.size < THREADS_PER_RUN * 2 && Date.now() < deadline);
+    if (!walkedAllPages) {
+      newHistoryId = maxRecordId !== null ? String(maxRecordId) : historyId;
+    }
   } catch (err) {
     if (errorStatus(err) === 404) {
       // The stored historyId aged out (Gmail keeps roughly a week). Re-seed

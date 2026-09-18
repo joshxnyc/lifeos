@@ -478,12 +478,18 @@ async function createRows(
         continue;
       }
       if (target.project_id) touchedProjects.add(target.project_id);
+      // "task_edit" is not in CaptureResult's declared union: widening it
+      // would force the undo path (capture actions + panel) to handle a type
+      // that cannot be undone by deletion. The undo action's zod enum rejects
+      // it at runtime ("Invalid request"), which is the safe behavior — an
+      // edit has no created row to delete. summarizeCapture renders unknown
+      // types via its NOUNS map, which has a "task_edit" entry.
       items.push({
         type: "task_edit",
         id: target.id,
         title: newTitle || target.title,
         detail: details.join(" · ") || undefined,
-      });
+      } as unknown as CaptureResult["items"][number]);
       continue;
     }
 

@@ -18,7 +18,9 @@ import type { ConnectedAccount } from "@/lib/types";
  * place that does, and only to the account's designated writable calendar.
  */
 
-const FULL_SYNC_PAST_DAYS = 30;
+// Rolling window: only the last 7 days of the past matter for extraction and
+// Today; the future stays wide because the calendar has to show what's ahead.
+const FULL_SYNC_PAST_DAYS = 7;
 const FULL_SYNC_FUTURE_DAYS = 90;
 const MAX_PAGES_PER_CALENDAR = 6;
 
