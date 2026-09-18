@@ -14,7 +14,7 @@ import {
 import { getNotionConfig, type NotionDatabaseConfig } from "@/lib/integrations/notion/config";
 import { mergeSyncState, markSynced, setAccountError } from "@/lib/integrations/accounts";
 import { upsertSourceItem } from "@/lib/integrations/source-items";
-import { descendingStreamsCursor, type StreamProgress } from "@/lib/domain/sync-cursor";
+import { ascendingPrefixCursor } from "@/lib/domain/sync-cursor";
 import type { ConnectedAccount } from "@/lib/types";
 
 /**
@@ -25,7 +25,17 @@ import type { ConnectedAccount } from "@/lib/types";
  * Nothing in this path writes to Notion.
  */
 
+/** Pages fully ingested per run (block fetch + upsert + mirror task). */
 const PAGE_BUDGET = 40;
+/**
+ * Page HEADERS fetched per stream per run (search results / database rows,
+ * 50 per API call). Kept far above any realistic between-run backlog: the
+ * cursor can only advance on a truncated run when the header fetch saw
+ * everything newer than the cursor (see the cursor rule in syncNotion).
+ */
+const FETCH_BUDGET = 500;
+/** See the comment at the nextCursor computation in syncNotion. */
+const CURSOR_SAFETY_MS = 60_000;
 
 export interface NotionStats {
   pages_seen: number;
@@ -144,70 +154,46 @@ export async function syncNotion(opts: {
     }
   };
 
-  // Cursor rule (see lib/domain/sync-cursor.ts): each stream — the shared
-  // search plus one per configured database — yields pages newest-edit-first,
-  // so when a stream is cut short everything it did NOT deliver is at most as
-  // old as the oldest page it did. On a clean run the cursor jumps to the
-  // newest edit; on a truncated run it advances to the oldest edit actually
-  // handled across the truncated streams (minus a minute of safety for
-  // Notion's minute-granular timestamps). Nothing newer than the stored
-  // cursor is ever skipped, and a persistent oversized backlog drains a
-  // slice per run instead of livelocking on the same head. Re-fetches stay
-  // free (content-hash upserts).
-  const outOfRoom = () => Date.now() > deadline || stats.pages_seen >= PAGE_BUDGET;
-  const streams: StreamProgress[] = [];
-  const handled = (tracker: StreamProgress, editedAt: string) => {
-    if (!tracker.oldestHandled || editedAt < tracker.oldestHandled) {
-      tracker.oldestHandled = editedAt;
-    }
-  };
+  // Cursor rule (see lib/domain/sync-cursor.ts): fetch page HEADERS
+  // exhaustively for everything edited since the cursor (headers are cheap —
+  // the expensive part is the per-page block fetch), sort them ascending and
+  // ingest OLDEST-FIRST up to the page budget. A truncated run then advances
+  // the cursor to just before the oldest page it did NOT ingest: everything
+  // older was ingested this run, everything newer is refetched next run. That
+  // drains an oversized backlog a slice per run without ever skipping a page.
+  // If the header fetch itself was cut short (header cap, deadline, or a
+  // database that failed to answer), the unfetched pages' edit times are
+  // unknown and the cursor stays put — Notion's streams are newest-first, so
+  // their unfetched remainder can be arbitrarily close to the old cursor.
 
-  // 1. Everything shared with the integration, newest edit first, stopping at
-  //    the cursor (SPEC §6.2: search filtered by last_edited_time > cursor).
-  const searchStream: StreamProgress = { oldestHandled: null, truncated: false };
-  streams.push(searchStream);
-  const pages = await searchShared({ objectType: "page", since: cursor, limit: PAGE_BUDGET });
-  if (pages.length >= PAGE_BUDGET) searchStream.truncated = true; // search itself may have more
-  for (const page of pages) {
-    if (outOfRoom()) {
-      searchStream.truncated = true;
-      break;
-    }
-    const dbConfig = page.parent_database_id
-      ? config.databases.find((d) => normalizeId(d.id) === normalizeId(page.parent_database_id ?? ""))
-      : undefined;
-    await ingest(page, dbConfig);
-    handled(searchStream, page.last_edited_time);
-  }
-
-  // 2. Each configured database, so task-like rows are never missed even if
-  //    search paging cut them off.
+  // 1. Fetch phase. The shared search plus each configured database, so
+  //    task-like rows are never missed even if search paging cut them off.
+  //    Merged by page id — a database row usually also appears in search.
+  const byId = new Map<string, NotionSearchResult>();
+  let fetchExhausted = true;
   let hadError = false;
+
+  const pages = await searchShared({ objectType: "page", since: cursor, limit: FETCH_BUDGET });
+  if (pages.length >= FETCH_BUDGET) fetchExhausted = false; // search itself may have more
+  for (const page of pages) byId.set(page.id, page);
+
   for (const db of config.databases) {
-    const dbStream: StreamProgress = { oldestHandled: null, truncated: false };
-    streams.push(dbStream);
-    if (outOfRoom()) {
-      dbStream.truncated = true;
-      continue; // keep pushing trackers: an unvisited database also pins the cursor
+    if (Date.now() > deadline) {
+      fetchExhausted = false; // its rows were never seen; the cursor must not pass them
+      break;
     }
     stats.databases_queried += 1;
     try {
-      const rows = await queryDatabase(db.id, cursor, PAGE_BUDGET);
-      if (rows.length >= PAGE_BUDGET) dbStream.truncated = true;
+      const rows = await queryDatabase(db.id, cursor, FETCH_BUDGET);
+      if (rows.length >= FETCH_BUDGET) fetchExhausted = false;
       for (const row of rows) {
-        if (outOfRoom()) {
-          dbStream.truncated = true;
-          break;
-        }
-        await ingest(row, db);
-        handled(dbStream, row.last_edited_time);
+        if (!byId.has(row.id)) byId.set(row.id, row);
       }
     } catch (err) {
-      // A database we could not read may hold edits newer than any boundary
-      // this run computed — its tracker stays at zero progress, which pins
+      // A database we could not read may hold edits newer than the cursor
+      // that this run never saw; treating the fetch as non-exhaustive pins
       // the cursor so nothing of it is skipped once it recovers.
-      dbStream.truncated = true;
-      dbStream.oldestHandled = null;
+      fetchExhausted = false;
       hadError = true;
       await setAccountError(
         supabase,
@@ -217,7 +203,32 @@ export async function syncNotion(opts: {
     }
   }
 
-  const nextCursor = descendingStreamsCursor(cursor, newest, streams);
+  // 2. Ingest phase, oldest edit first (see the cursor rule above).
+  const ordered = [...byId.values()].sort((a, b) =>
+    a.last_edited_time < b.last_edited_time ? -1 : a.last_edited_time > b.last_edited_time ? 1 : 0,
+  );
+  let processed = 0;
+  for (const page of ordered) {
+    if (processed >= PAGE_BUDGET || Date.now() > deadline) break;
+    const dbConfig = page.parent_database_id
+      ? config.databases.find((d) => normalizeId(d.id) === normalizeId(page.parent_database_id ?? ""))
+      : undefined;
+    await ingest(page, dbConfig);
+    processed += 1;
+  }
+
+  // The one-minute safety margin keeps a not-yet-ingested page whose
+  // last_edited_time equals the boundary (Notion timestamps have minute
+  // granularity) fetchable by the next run's strictly-newer-than-cursor
+  // search. Re-ingesting the pages just before the boundary is free
+  // (content-hash upserts).
+  const nextCursor = ascendingPrefixCursor(
+    cursor,
+    ordered.map((p) => p.last_edited_time),
+    processed,
+    fetchExhausted,
+    CURSOR_SAFETY_MS,
+  );
   if (nextCursor) {
     await mergeSyncState(supabase, account.id, { last_edited_cursor: nextCursor });
   }

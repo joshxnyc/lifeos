@@ -1,6 +1,11 @@
 import "server-only";
 import { serverEnv } from "@/lib/env";
-import type { GranolaAttendee, GranolaClient, GranolaNote } from "@/lib/integrations/granola/types";
+import type {
+  GranolaAttendee,
+  GranolaClient,
+  GranolaListResult,
+  GranolaNote,
+} from "@/lib/integrations/granola/types";
 
 /**
  * Granola Public API adapter (SPEC §6.3) — Business plan, bearer `grn_` key.
@@ -23,7 +28,7 @@ export class GranolaApiClient implements GranolaClient {
     if (!this.apiKey) throw new Error("GRANOLA_API_KEY is not set");
   }
 
-  async *listNotes(createdAfter: string): AsyncIterable<GranolaNote> {
+  async *listNotes(createdAfter: string): AsyncGenerator<GranolaNote, GranolaListResult, void> {
     let cursor: string | undefined;
     let page = 0;
 
@@ -45,26 +50,10 @@ export class GranolaApiClient implements GranolaClient {
       const rows = body.notes ?? body.data ?? body.items ?? [];
       for (const raw of rows) {
         const note = mapNote(raw);
-        if (!note) continue;
-        // Transcripts are a separate fetch; a failure there must not lose the
-        // summary. An oversized transcript comes back 413 with a dedicated
-        // endpoint (docs.granola.ai) — fall through to it.
-        if (!note.transcript) {
-          try {
-            const full = await this.get<RawNote>(
-              `${BASE}/notes/${encodeURIComponent(note.id)}?include=transcript`,
-            );
-            const withTranscript = mapNote(full);
-            if (withTranscript?.transcript) note.transcript = withTranscript.transcript;
-          } catch (err) {
-            if (err instanceof Error && err.message.includes("413")) {
-              note.transcript = await this.fetchLargeTranscript(note.id);
-            }
-            // Anything else: a note still processing or scope-limited — keep
-            // the summary and move on.
-          }
-        }
-        yield note;
+        // Headers only: the sync job hydrates transcripts via fetchTranscript
+        // for just the notes it processes this run, so listing a big backlog
+        // stays cheap.
+        if (note) yield note;
       }
 
       const more = body.hasMore ?? body.has_more;
@@ -72,6 +61,33 @@ export class GranolaApiClient implements GranolaClient {
         more === false ? undefined : (body.next_cursor ?? body.cursor ?? undefined) || undefined;
       page += 1;
     } while (cursor && page < MAX_PAGES);
+
+    // A walk that stopped at MAX_PAGES with a live cursor left notes behind.
+    return { exhausted: !cursor };
+  }
+
+  /**
+   * Transcripts are a separate fetch; a failure must not lose the summary. An
+   * oversized transcript comes back 413 with a dedicated endpoint
+   * (docs.granola.ai) — fall through to it. Anything else (a note still
+   * processing, scope-limited key) leaves the summary as-is.
+   */
+  async fetchTranscript(note: GranolaNote): Promise<string | undefined> {
+    try {
+      const full = await this.get<RawNote>(
+        `${BASE}/notes/${encodeURIComponent(note.id)}?include=transcript`,
+      );
+      return mapNote(full)?.transcript;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("413")) {
+        return this.fetchLargeTranscript(note.id);
+      }
+      return undefined;
+    }
+  }
+
+  async close(): Promise<void> {
+    // Plain HTTPS — nothing to release.
   }
 
   /** GET /notes/{id}/transcript — the fallback for 413 TRANSCRIPT_TOO_LARGE. */

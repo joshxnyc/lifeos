@@ -2,7 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mapNote } from "@/lib/integrations/granola/granola-api";
 import { GRANOLA_MCP_URL, GranolaOAuthProvider } from "@/lib/integrations/granola/oauth-provider";
-import type { GranolaClient, GranolaNote } from "@/lib/integrations/granola/types";
+import type {
+  GranolaClient,
+  GranolaListResult,
+  GranolaNote,
+} from "@/lib/integrations/granola/types";
 import type { ConnectedAccount } from "@/lib/types";
 
 /**
@@ -20,41 +24,65 @@ const TOOL_TRANSCRIPT = "get_meeting_transcript";
 
 export class GranolaMcpClient implements GranolaClient {
   readonly adapter = "mcp" as const;
+  /** One lazy connection shared by listNotes and fetchTranscript; the caller
+   *  releases it with close() when the run is over. */
+  private conn: Promise<McpLike> | null = null;
 
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly account: ConnectedAccount,
   ) {}
 
-  async *listNotes(createdAfter: string): AsyncIterable<GranolaNote> {
-    const { client, close } = await this.connect();
-    try {
-      const raw = await this.firstWorkingTool(client, TOOL_LIST, [
-        { limit: 50 },
-        { limit: 50, created_after: createdAfter },
-        {},
-      ]);
-      const notes = toNotes(raw);
+  async *listNotes(createdAfter: string): AsyncGenerator<GranolaNote, GranolaListResult, void> {
+    const client = await this.client();
+    const raw = await this.firstWorkingTool(client, TOOL_LIST, [
+      { limit: 50 },
+      { limit: 50, created_after: createdAfter },
+      {},
+    ]);
+    const notes = toNotes(raw);
 
-      for (const note of notes) {
-        if (note.occurredAt && note.occurredAt < createdAfter) continue;
-        if (!note.transcript) {
-          try {
-            const transcript = await callTool(client, TOOL_TRANSCRIPT, { meeting_id: note.id });
-            const text = transcriptText(transcript);
-            if (text) note.transcript = text;
-          } catch {
-            // Paid-plan only — Basic returns an error here, which is fine.
-          }
-        }
-        yield note;
-      }
-    } finally {
-      await close();
+    for (const note of notes) {
+      if (note.occurredAt && note.occurredAt < createdAfter) continue;
+      yield note;
+    }
+
+    // MCP has no pagination: one batch is everything reachable this run.
+    // Reporting it as exhaustive lets the sync cursor advance through the
+    // batch — pinning the cursor instead would refetch the same batch forever
+    // without ever reaching anything the tool's own cap withheld.
+    return { exhausted: true };
+  }
+
+  /** Paid-plan only — Basic returns an error here, which is fine. */
+  async fetchTranscript(note: GranolaNote): Promise<string | undefined> {
+    try {
+      const client = await this.client();
+      const transcript = await callTool(client, TOOL_TRANSCRIPT, { meeting_id: note.id });
+      return transcriptText(transcript) || undefined;
+    } catch {
+      return undefined;
     }
   }
 
-  private async connect() {
+  async close(): Promise<void> {
+    const conn = this.conn;
+    this.conn = null;
+    if (!conn) return;
+    try {
+      const client = await conn;
+      await (client as { close?: () => Promise<void> }).close?.();
+    } catch {
+      /* closing a dead transport is not an error worth surfacing */
+    }
+  }
+
+  private client(): Promise<McpLike> {
+    if (!this.conn) this.conn = this.connect();
+    return this.conn;
+  }
+
+  private async connect(): Promise<McpLike> {
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
     const { StreamableHTTPClientTransport } = await import(
       "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -69,17 +97,7 @@ export class GranolaMcpClient implements GranolaClient {
     });
     const client = new Client({ name: "lifeos", version: "1.0.0" }, { capabilities: {} });
     await client.connect(transport);
-
-    return {
-      client,
-      close: async () => {
-        try {
-          await client.close();
-        } catch {
-          /* closing a dead transport is not an error worth surfacing */
-        }
-      },
-    };
+    return client;
   }
 
   /** Granola's tool names and argument shapes vary by plan; try in order. */

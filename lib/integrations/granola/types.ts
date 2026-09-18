@@ -28,9 +28,28 @@ export interface GranolaNote {
   url: string;
 }
 
+export interface GranolaListResult {
+  /**
+   * True when the source had nothing more after what was yielded — false when
+   * the walk stopped at a page cap. The sync job may only advance its cursor
+   * past unprocessed notes when the listing was exhaustive.
+   */
+  exhausted: boolean;
+}
+
 export interface GranolaClient {
-  /** Notes created after this ISO timestamp, newest-first or oldest-first. */
-  listNotes(createdAfter: string): AsyncIterable<GranolaNote>;
+  /**
+   * Note headers created after this ISO timestamp: summary, attendees, and a
+   * transcript only when the listing already carried one. Transcripts are
+   * hydrated separately via fetchTranscript so the sync job can list a large
+   * backlog cheaply and only pay for the notes it processes this run. The
+   * yield order is NOT contract-stable — the caller buffers and sorts.
+   */
+  listNotes(createdAfter: string): AsyncGenerator<GranolaNote, GranolaListResult, void>;
+  /** Best-effort transcript for one note; undefined when unavailable. */
+  fetchTranscript(note: GranolaNote): Promise<string | undefined>;
+  /** Release any underlying connection. Safe to call repeatedly. */
+  close(): Promise<void>;
   /** For Settings: which path is live. */
   readonly adapter: "api" | "mcp";
 }
