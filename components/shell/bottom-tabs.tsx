@@ -13,6 +13,7 @@ import {
   Users,
   StickyNote,
   Search,
+  MessageCircle,
   ClipboardList,
   Settings,
 } from "lucide-react";

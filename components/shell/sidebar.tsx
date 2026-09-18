@@ -58,6 +58,7 @@ export function Sidebar({
         {item("/people", "People")}
         {item("/notes", "Notes")}
         {item("/search", "Search", undefined, "⌘K")}
+        {item("/chat", "Ask")}
         {item("/review", "Review")}
       </nav>
       <div className="mt-6 flex flex-col gap-0.5">

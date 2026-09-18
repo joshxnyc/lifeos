@@ -92,6 +92,35 @@ export const FILE_CAPTURE_SCHEMA: Record<string, unknown> = {
               role: NULLABLE_STRING,
             },
           },
+          task_id: {
+            ...NULLABLE_STRING,
+            description: "task_edit only: id of the open task being changed, from the Open tasks context.",
+          },
+          target_title: {
+            ...NULLABLE_STRING,
+            description:
+              "task_edit only: Joshua's words for which task, for server-side resolution when task_id is null.",
+          },
+          changes: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            required: ["due_date", "due_time", "scheduled_date", "priority", "title", "status"],
+            description: "task_edit only: the fields to change. Null fields are left untouched.",
+            properties: {
+              due_date: { ...NULLABLE_STRING, description: "New due date YYYY-MM-DD, or null." },
+              due_time: { ...NULLABLE_STRING, description: "New due time HH:mm (24-hour), or null." },
+              scheduled_date: {
+                ...NULLABLE_STRING,
+                description: "New scheduled (work-on-it) date YYYY-MM-DD, or null.",
+              },
+              priority: { type: ["integer", "null"], description: "New priority 0-3, or null." },
+              title: { ...NULLABLE_STRING, description: "New title for a rename, or null." },
+              status: {
+                ...NULLABLE_STRING,
+                description: 'Exactly "done" or "dropped", or null to leave the task open.',
+              },
+            },
+          },
         },
       },
     },
@@ -102,8 +131,17 @@ export const FILE_CAPTURE_SCHEMA: Record<string, unknown> = {
   },
 };
 
+interface TaskEditChanges {
+  due_date: string | null;
+  due_time: string | null;
+  scheduled_date: string | null;
+  priority: number | null;
+  title: string | null;
+  status: "done" | "dropped" | null;
+}
+
 interface FiledItemInput {
-  type: "task" | "note" | "routine_log" | "person_update" | "reminder";
+  type: "task" | "note" | "routine_log" | "person_update" | "reminder" | "task_edit";
   title: string | null;
   body_md: string | null;
   domain_id: string | null;
@@ -118,6 +156,9 @@ interface FiledItemInput {
   routine_status: "done" | "skipped" | null;
   fact: string | null;
   new_person: { name: string; company: string | null; role: string | null } | null;
+  task_id: string | null;
+  target_title: string | null;
+  changes: TaskEditChanges | null;
 }
 
 interface FileCaptureOutput {
@@ -330,10 +371,18 @@ async function createRows(
 
   // Ids the model returned are validated against the real tables: a
   // hallucinated id would otherwise fail the foreign key and lose the capture.
-  const [projectRows, peopleRows, routineRows] = await Promise.all([
+  const [projectRows, peopleRows, routineRows, openTaskRows] = await Promise.all([
     supabase.from("projects").select("id").eq("user_id", userId),
     supabase.from("people").select("id, name, notes_md").eq("user_id", userId),
     supabase.from("routines").select("id").eq("user_id", userId),
+    // task_edit targets. Open and non-mirror only: a mirrored (Notion) task is
+    // never edited from here, and a closed one is not a live edit target.
+    supabase
+      .from("tasks")
+      .select("id, title, project_id")
+      .eq("user_id", userId)
+      .eq("status", "open")
+      .eq("is_mirror", false),
   ]);
   const projectIds = new Set((projectRows.data ?? []).map((r) => r.id as string));
   const peopleById = new Map(
@@ -341,6 +390,12 @@ async function createRows(
   );
   const knownPeople = (peopleRows.data ?? []).map((r) => ({ id: r.id as string, name: r.name as string }));
   const routineIds = new Set((routineRows.data ?? []).map((r) => r.id as string));
+  const openTasks = (openTaskRows.data ?? []).map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    project_id: (r.project_id as string | null) ?? null,
+  }));
+  const openTaskById = new Map(openTasks.map((t) => [t.id, t]));
 
   for (const item of output.items ?? []) {
     const domainId = item.domain_id && ctx.domainIds.has(item.domain_id) ? item.domain_id : ctx.personalDomainId;
